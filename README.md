@@ -15,6 +15,14 @@ Log in with username ```debian``` and password ```debian```
 sudo adduser --gecos "Full Name,RoomNumber,WorkPhone,HomePhone" --disabled-password newusername && echo "newusername:newpassword" | sudo chpasswd
 sudo apt install openssh-server
 sudo systemctl start ssh
+ip -4 a show enp0s1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
+```
 
-ip a
+ArchLinux:
+
+```
+useradd -m -s /bin/bash newusername
+pacman -Syu --noconfirm
+systemctl start sshd
+ip -4 a show enp0s1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
 ```
