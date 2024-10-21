@@ -21,7 +21,7 @@ ip -4 a show enp0s1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
 ArchLinux:
 
 ```
-useradd -m -s /bin/bash newusername
+useradd -m -s /bin/bash newusername && echo "newusername:password" | chpasswd
 pacman -Syu --noconfirm
 systemctl start sshd
 ip -4 a show enp0s1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
