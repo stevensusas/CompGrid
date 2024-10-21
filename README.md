@@ -2,10 +2,11 @@
 
 General steps to configured boosted VMs for ssh connection:
 
-1. Install and startup openssh
-2. create new user and password
-3. check local ip address
-4. in remote machine, do ```ssh [user]@[ip address]```
+1. Login
+2. Install and startup openssh
+3. create new user and password
+4. check local ip address
+5. in remote machine, do ```ssh [user]@[ip address]```
 
 Debian:
 
@@ -19,6 +20,8 @@ ip -4 a show enp0s1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
 ```
 
 ArchLinux:
+
+Log in with username ```root``` and password ```root```
 
 ```
 useradd -m -s /bin/bash newusername && echo "newusername:password" | chpasswd
