@@ -6,3 +6,26 @@ terraform.tfvars
 *.tfplan
 crash.log
 .terraform.lock.hcl
+
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+
+# OS files
+.DS_Store
+
+# Optional for specific editor configurations
+.vscode/
+.idea/
+
+# Dependency directories and lock files
+*.lock

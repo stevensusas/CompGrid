@@ -8,6 +8,15 @@
             "name": "CompGrid",
             "database": "postgres",
             "username": "compgrid"
+        },
+        {
+            "previewLimit": 50,
+            "server": "terraform-20241025165823351500000001.cha8ies4obs2.us-east-1.rds.amazonaws.com",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "compgriddb",
+            "database": "postgres",
+            "username": "compgrid"
         }
     ]
 }
