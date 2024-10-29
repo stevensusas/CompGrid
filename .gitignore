@@ -1,3 +1,4 @@
+# Existing ignores
 .env
 .terraform/
 terraform.tfstate
@@ -23,9 +24,39 @@ yarn-error.log*
 # OS files
 .DS_Store
 
-# Optional for specific editor configurations
+# Editor directories
 .vscode/
 .idea/
 
 # Dependency directories and lock files
 *.lock
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django specific
+db.sqlite3         # SQLite database file, if used
+*.sqlite3          # Any SQLite database file
+/media/            # Media uploads, if using a media folder
+/staticfiles/      # Static files collected for deployment
+*.pyc              # Compiled Python files
+*.pyo              # Compiled Python files
+*.pyd              # Compiled Python files on Windows
+
+# Django migrations
+**/migrations/*    # Ignore migrations except for __init__.py
+!**/migrations/__init__.py
+
+# Python virtual environments
+venv/
+env/
+.venv/
+
+# Poetry cache
+poetry.lock
+
+# Mac system files
+Thumbs.db
+.DS_Store
