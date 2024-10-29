@@ -8,6 +8,7 @@ CREATE TABLE Users (
 -- PriceTier Table
 CREATE TABLE PriceTier (
     PriceTierId SERIAL PRIMARY KEY,
+    price_tier VARCHAR(100) NOT NULL,
     PricePerHour NUMERIC(10, 2) NOT NULL
 );
 
