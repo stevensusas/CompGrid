@@ -12,21 +12,29 @@ CREATE TABLE PriceTier (
     PricePerHour NUMERIC(10, 2) NOT NULL
 );
 
+-- InstanceType Table
+CREATE TABLE InstanceType (
+    InstanceTypeId SERIAL PRIMARY KEY,
+    InstanceType VARCHAR(100) NOT NULL,
+    SystemType VARCHAR(100) NOT NULL,  -- Fixed duplicate column
+    CPUCoreCount INT NOT NULL,
+    Storage NUMERIC(10, 2) NOT NULL,   -- Size in GB or appropriate unit
+    Memory NUMERIC(10, 2) NOT NULL,    -- Size in GB or appropriate unit
+    PriceTierId INT NOT NULL,          -- Foreign key to PriceTier
+    FOREIGN KEY (PriceTierId) REFERENCES PriceTier (PriceTierId)
+);
+
 -- Instance Table
 CREATE TABLE Instance (
     InstanceId SERIAL PRIMARY KEY,
-    SystemType VARCHAR(100) NOT NULL,
-    CPUCoreCount INT NOT NULL,
-    Storage NUMERIC(10, 2) NOT NULL, -- Size in GB or appropriate unit
-    Memory NUMERIC(10, 2) NOT NULL,  -- Size in GB or appropriate unit
+    InstanceTypeId INT NOT NULL,       -- Foreign key to InstanceType
     IPAddress INET NOT NULL,
-    Username VARCHAR(100) NOT NULL,  -- Username for the instance login
-    Password VARCHAR(255) NOT NULL,  -- Password for the instance login
-    PriceTierId INT NOT NULL,        -- Foreign key to PriceTier
-    Booted BOOLEAN DEFAULT FALSE,    -- Whether the instance is booted or not
-    AllocatedUserId INT,             -- Foreign key to Users (if needed for allocation)
-    FOREIGN KEY (PriceTierId) REFERENCES PriceTier (PriceTierId),
-    FOREIGN KEY (AllocatedUserId) REFERENCES Users (UserId)
+    Username VARCHAR(100) NOT NULL,    -- Username for the instance login
+    Password VARCHAR(255) NOT NULL,    -- Password for the instance login
+    Booted BOOLEAN DEFAULT FALSE,      -- Whether the instance is booted or not
+    AllocatedUserId INT,               -- Foreign key to Users (if needed for allocation)
+    FOREIGN KEY (AllocatedUserId) REFERENCES Users (UserId),
+    FOREIGN KEY (InstanceTypeId) REFERENCES InstanceType (InstanceTypeId)
 );
 
 -- UsageLogs Table to track each user's usage of an instance
@@ -36,7 +44,6 @@ CREATE TABLE UsageLogs (
     InstanceId INT NOT NULL,               -- Foreign key to Instance
     StartTime TIMESTAMP NOT NULL,          -- Start time of the session
     EndTime TIMESTAMP,                     -- End time of the session, NULL if still running
-    FOREIGN KEY (UserId) REFERENCES Users(UserId),
-    FOREIGN KEY (InstanceId) REFERENCES Instance(InstanceId)
+    FOREIGN KEY (UserId) REFERENCES Users (UserId),
+    FOREIGN KEY (InstanceId) REFERENCES Instance (InstanceId)
 );
-
