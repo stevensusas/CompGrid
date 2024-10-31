@@ -6,6 +6,58 @@ const { Pool } = require('pg');
 const router = express.Router();
 const pool = new Pool();
 
+// User Registration
+router.post('/register', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    // Check if username already exists
+    const existingUser = await pool.query('SELECT * FROM Users WHERE Username = $1', [username]);
+    if (existingUser.rowCount > 0) {
+      return res.status(400).send('Username already exists');
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert new user
+    await pool.query(
+      `INSERT INTO Users (Username, Password, Role) VALUES ($1, $2, 'user')`,
+      [username, hashedPassword]
+    );
+
+    res.status(201).send('User registered successfully');
+  } catch (error) {
+    console.error('Error registering user:', error);
+    res.status(500).send('Error registering user');
+  }
+});
+
+// User Login
+router.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const userResult = await pool.query('SELECT * FROM Users WHERE Username = $1 AND Role = $2', [username, 'user']);
+
+    if (userResult.rowCount === 0) {
+      return res.status(400).send('Invalid username or password');
+    }
+
+    const user = userResult.rows[0];
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).send('Invalid username or password');
+    }
+
+    // Generate JWT
+    const token = jwt.sign({ userId: user.userid, role: user.role }, 'your_jwt_secret', { expiresIn: '1h' });
+    res.status(200).json({ token });
+  } catch (error) {
+    console.error('Error logging in user:', error);
+    res.status(500).send('Error logging in user');
+  }
+});
+
 // Request instance by instance type
 router.post('/instances/request', authenticateToken, authenticateUser, async (req, res) => {
   const { instanceType } = req.body;

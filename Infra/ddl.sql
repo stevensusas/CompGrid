@@ -1,8 +1,11 @@
 -- Users Table
+CREATE TYPE user_role AS ENUM ('admin', 'user');
+
 CREATE TABLE Users (
     UserId SERIAL PRIMARY KEY,
     Username VARCHAR(100) NOT NULL,
-    Password VARCHAR(255) NOT NULL
+    Password VARCHAR(255) NOT NULL,
+    Role user_role NOT NULL
 );
 
 -- PriceTier Table
