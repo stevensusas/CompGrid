@@ -7,7 +7,7 @@ const router = express.Router();
 const pool = new Pool();
 
 // User Registration
-router.post('/register', async (req, res) => {
+router.post('/register-user', async (req, res) => {
   const { username, password } = req.body;
   try {
     // Check if username already exists
@@ -33,7 +33,7 @@ router.post('/register', async (req, res) => {
 });
 
 // User Login
-router.post('/login', async (req, res) => {
+router.post('/login-user', async (req, res) => {
   const { username, password } = req.body;
   try {
     const userResult = await pool.query('SELECT * FROM Users WHERE Username = $1 AND Role = $2', [username, 'user']);

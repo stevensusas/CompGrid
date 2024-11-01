@@ -9,7 +9,7 @@ const router = express.Router();
 const pool = new Pool();  // Assuming database configuration is in environment variables
 
 // Owner Registration
-router.post('/register', async (req, res) => {
+router.post('/register-owner', async (req, res) => {
   const { username, password } = req.body;
   try {
     // Check if username already exists
@@ -35,7 +35,7 @@ router.post('/register', async (req, res) => {
 });
 
 // Owner Login
-router.post('/login', async (req, res) => {
+router.post('/login-owner', async (req, res) => {
   const { username, password } = req.body;
   try {
     const userResult = await pool.query('SELECT * FROM Users WHERE Username = $1 AND Role = $2', [username, 'admin']);
@@ -141,6 +141,53 @@ router.delete('/instances/:id', authenticateToken, authenticateOwner, async (req
     res.status(500).send('Error removing instance');
   }
 });
+
+// Get all instances
+router.get('/instances', authenticateToken, authenticateOwner, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT i.InstanceId, i.IPAddress, i.Username, i.Booted, 
+             it.InstanceType, it.SystemType, it.CPUCoreCount, it.Storage, it.Memory, 
+             pt.price_tier, pt.PricePerHour
+      FROM Instance i
+      JOIN InstanceType it ON i.InstanceTypeId = it.InstanceTypeId
+      JOIN PriceTier pt ON it.PriceTierId = pt.PriceTierId
+    `);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error retrieving instances:', error);
+    res.status(500).send('Error retrieving instances');
+  }
+});
+
+// Get all instance types
+router.get('/instance-types', authenticateToken, authenticateOwner, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT InstanceTypeId, InstanceType, SystemType, CPUCoreCount, Storage, Memory, PriceTierId 
+      FROM InstanceType
+    `);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error retrieving instance types:', error);
+    res.status(500).send('Error retrieving instance types');
+  }
+});
+
+// Get all price tiers
+router.get('/price-tiers', authenticateToken, authenticateOwner, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT PriceTierId, price_tier, PricePerHour 
+      FROM PriceTier
+    `);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error retrieving price tiers:', error);
+    res.status(500).send('Error retrieving price tiers');
+  }
+});
+
 
 module.exports = router;
 
