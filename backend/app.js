@@ -6,7 +6,7 @@ const express = require('express');
 const { Pool } = require('pg');  // Import the PostgreSQL client
 
 const app = express();
-const PORT = 5000;
+const PORT = 7000;
 
 // Set up the PostgreSQL connection pool
 const pool = new Pool({
