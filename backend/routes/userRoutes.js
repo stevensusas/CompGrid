@@ -1,10 +1,13 @@
 const express = require('express');
 const { authenticateToken, authenticateUser } = require('../authMiddleware');
 const axios = require('axios');
-const { Pool } = require('pg');
+const pool = require('../db');
 
 const router = express.Router();
-const pool = new Pool();
+
+require('dotenv').config();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'CompGrid_SuperSecretKey_2024';
 
 // User Registration
 router.post('/register-user', async (req, res) => {
@@ -50,7 +53,7 @@ router.post('/login-user', async (req, res) => {
     }
 
     // Generate JWT
-    const token = jwt.sign({ userId: user.userid, role: user.role }, 'your_jwt_secret', { expiresIn: '1h' });
+    const token = jwt.sign({ userId: user.userid, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
     res.status(200).json({ token });
   } catch (error) {
     console.error('Error logging in user:', error);

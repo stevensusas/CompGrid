@@ -1,8 +1,7 @@
-import { AppBar, Container, Toolbar, Typography } from '@mui/material'
-import { NavLink } from 'react-router-dom';
+import { AppBar, Container, Toolbar, Typography, Button } from '@mui/material'
+import { NavLink, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-// The hyperlinks in the NavBar contain a lot of repeated formatting code so a
-// helper component NavText local to the file is defined to prevent repeated code.
 function NavText({ href, text, isMain }) {
   return (
     <Typography
@@ -25,20 +24,39 @@ function NavText({ href, text, isMain }) {
         {text}
       </NavLink>
     </Typography>
-  )
+  );
 }
 
-// Here, we define the NavBar. Note that we heavily leverage MUI components
-// to make the component look nice. Feel free to try changing the formatting
-// props to how it changes the look of the component.
 export default function NavBar() {
+  const location = useLocation();
+  const { user, logout } = useAuth();
+  
+  // List of paths where navbar should be hidden
+  const hideNavbarPaths = ['/login', '/register'];
+  
+  // Check if current path is in the hide list
+  if (hideNavbarPaths.includes(location.pathname)) {
+    return null;  // Return nothing if we're on login or register page
+  }
+
   return (
     <AppBar position='static'>
       <Container maxWidth='xl'>
         <Toolbar disableGutters>
           <NavText href='/' text='COMPGRID' isMain />
-          <NavText href='/albums' text='ANALYTICS' />
-          <NavText href='/songs' text='INSTANCES' />
+          {user ? (
+            <>
+              <NavText href='/albums' text='ANALYTICS' />
+              <NavText href='/songs' text='INSTANCES' />
+              <Button 
+                color="inherit" 
+                onClick={logout} 
+                style={{ marginLeft: 'auto' }}
+              >
+                Logout
+              </Button>
+            </>
+          ) : null}
         </Toolbar>
       </Container>
     </AppBar>

@@ -1,227 +1,356 @@
-import { useEffect, useState } from 'react';
-import { Checkbox, Container, Grid, Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField } from '@mui/material';
-import { DataGrid } from '@mui/x-data-grid';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
+import config from '../config.json';
+import {
+  Container,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  Typography,
+  Box,
+  Tabs,
+  Tab
+} from '@mui/material';
 
-const config = require('../config.json');
-
-export default function InstancesPage() {
-  const [pageSize, setPageSize] = useState(10);
-  const [instanceData, setInstanceData] = useState([]);
-  const [instanceTypeData, setInstanceTypeData] = useState([]);
-  const [priceTierData, setPriceTierData] = useState([]);
-  
-  // Dialog state
+export default function InstanceManagementPage() {
+  const { user } = useAuth();
+  const [instances, setInstances] = useState([]);
+  const [instanceTypes, setInstanceTypes] = useState([]);
+  const [priceTiers, setPriceTiers] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
-  const [dialogType, setDialogType] = useState('');
-  
-  // Form state
-  const [formData, setFormData] = useState({});
+  const [selectedInstance, setSelectedInstance] = useState(null);
+  const [activeTab, setActiveTab] = useState('instances');
+  const [formData, setFormData] = useState({
+    instanceName: '',
+    instanceTypeId: '',
+    username: '',
+    password: '',
+    ipAddress: '',
+    booted: false
+  });
 
-  // Fetch data for each table
-  useEffect(() => {
-    fetch(`http://${config.server_host}:${config.server_port}/search_instances`)
-      .then(res => res.json())
-      .then(resJson => {
-        const instancesWithId = resJson.map((instance) => ({ id: instance.InstanceId, ...instance }));
-        setInstanceData(instancesWithId);
+  const fetchData = useCallback(async (endpoint) => {
+    try {
+      if (!user || !user.token) {
+        throw new Error('No authentication found');
+      }
+
+      const response = await fetch(`http://${config.server_host}:${config.server_port}${endpoint}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        }
       });
-  }, []);
+
+      if (!response.ok) {
+        console.error('Response status:', response.status);
+        console.error('Response headers:', response.headers);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error(`Error fetching ${endpoint}:`, error);
+      return [];
+    }
+  }, [user]);
 
   useEffect(() => {
-    fetch(`http://${config.server_host}:${config.server_port}/search_instance_types`)
-      .then(res => res.json())
-      .then(resJson => {
-        const instanceTypesWithId = resJson.map((type) => ({ id: type.InstanceTypeId, ...type }));
-        setInstanceTypeData(instanceTypesWithId);
-      });
-  }, []);
+    const loadData = async () => {
+      if (!user) return;
 
-  useEffect(() => {
-    fetch(`http://${config.server_host}:${config.server_port}/search_price_tiers`)
-      .then(res => res.json())
-      .then(resJson => {
-        const priceTiersWithId = resJson.map((tier) => ({ id: tier.PriceTierId, ...tier }));
-        setPriceTierData(priceTiersWithId);
-      });
-  }, []);
+      try {
+        const [instancesData, typesData, tiersData] = await Promise.all([
+          fetchData('/api/owner/instances'),
+          fetchData('/api/owner/instance-types'),
+          fetchData('/api/owner/price-tiers')
+        ]);
 
-  // Handler for opening the dialog
-  const handleOpenDialog = (type) => {
-    setDialogType(type);
-    setFormData({});
+        setInstances(instancesData);
+        setInstanceTypes(typesData);
+        setPriceTiers(tiersData);
+      } catch (error) {
+        console.error('Error loading data:', error);
+      }
+    };
+
+    loadData();
+  }, [user, fetchData]);
+
+  const handleToggleStatus = async (instance) => {
+    try {
+      const response = await fetch(
+        `http://${config.server_host}:${config.server_port}/api/owner/instances/${instance.instanceid}/toggle`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const updatedInstances = await fetchData('/api/owner/instances');
+      setInstances(updatedInstances);
+    } catch (error) {
+      console.error('Error toggling instance status:', error);
+    }
+  };
+
+  const handleOpenDialog = (instance = null) => {
+    if (instance) {
+      setSelectedInstance(instance);
+      setFormData({
+        instanceName: instance.name,
+        instanceType: instance.type,
+        priceTier: instance.priceTier,
+        status: instance.status
+      });
+    } else {
+      setSelectedInstance(null);
+      setFormData({
+        instanceName: '',
+        instanceType: '',
+        priceTier: '',
+        status: 'running'
+      });
+    }
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
+    setSelectedInstance(null);
+    setFormData({
+      instanceName: '',
+      instanceType: '',
+      priceTier: '',
+      status: 'running'
+    });
   };
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const handleFormSubmit = () => {
-    console.log(`Submitting new ${dialogType}:`, formData);
-    // Implement actual submission logic here (e.g., API call)
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     handleCloseDialog();
   };
 
-  // Define the columns for each table
-  const priceTierColumns = [
-    { field: 'PriceTierId', headerName: 'Price Tier ID', width: 150 },
-    { field: 'price_tier', headerName: 'Price Tier', width: 200 },
-    { field: 'PricePerHour', headerName: 'Price per Hour ($)', width: 150 },
-  ];
-
-  const instanceTypeColumns = [
-    { field: 'InstanceTypeId', headerName: 'Instance Type ID', width: 150 },
-    { field: 'InstanceType', headerName: 'Instance Type', width: 150 },
-    { field: 'SystemType', headerName: 'System Type', width: 150 },
-    { field: 'CPUCoreCount', headerName: 'CPU Cores', width: 120 },
-    { field: 'Storage', headerName: 'Storage (GB)', width: 120 },
-    { field: 'Memory', headerName: 'Memory (GB)', width: 120 },
-  ];
-
-  const instanceColumns = [
-    { field: 'InstanceId', headerName: 'Instance ID', width: 100 },
-    { field: 'InstanceType', headerName: 'Instance Type', width: 150 },
-    { field: 'SystemType', headerName: 'System Type', width: 150 },
-    { field: 'CPUCoreCount', headerName: 'CPU Cores', width: 120 },
-    { field: 'Storage', headerName: 'Storage (GB)', width: 120 },
-    { field: 'Memory', headerName: 'Memory (GB)', width: 120 },
-    { field: 'IPAddress', headerName: 'IP Address', width: 150 },
-    { field: 'Username', headerName: 'Username', width: 150 },
-    { field: 'Booted', headerName: 'Booted', width: 100, renderCell: (params) => (
-        <Checkbox checked={params.value} disabled />
-    ) }
-  ];
-
-  // Function to render form fields based on dialog type
-const renderFormFields = () => {
-  let fields = [];
-  if (dialogType === 'Price Tier') {
-    fields = [
-      { label: 'Price Tier', name: 'price_tier', type: 'text' },
-      { label: 'Price per Hour', name: 'PricePerHour', type: 'number', inputProps: { min: 0, step: 0.01 } },
-    ];
-  } else if (dialogType === 'Instance Type') {
-    fields = [
-      { label: 'Instance Type', name: 'InstanceType', type: 'text' },
-      { label: 'System Type', name: 'SystemType', type: 'text' },
-      { label: 'CPU Cores', name: 'CPUCoreCount', type: 'number', inputProps: { min: 1, step: 1 } },
-      { label: 'Storage (GB)', name: 'Storage', type: 'number', inputProps: { min: 1, step: 1 } },
-      { label: 'Memory (GB)', name: 'Memory', type: 'number', inputProps: { min: 1, step: 1 } },
-    ];
-  } else if (dialogType === 'Instance') {
-    fields = [
-      { label: 'Instance Type', name: 'InstanceType', type: 'text' },
-      { label: 'System Type', name: 'SystemType', type: 'text' },
-      { label: 'CPU Cores', name: 'CPUCoreCount', type: 'number', inputProps: { min: 1, step: 1 } },
-      { label: 'Storage (GB)', name: 'Storage', type: 'number', inputProps: { min: 1, step: 1 } },
-      { label: 'Memory (GB)', name: 'Memory', type: 'number', inputProps: { min: 1, step: 1 } },
-      { label: 'IP Address', name: 'IPAddress', type: 'text', pattern: "^((25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$" }, // Optional IP address regex pattern
-      { label: 'Username', name: 'Username', type: 'text' },
-      { label: 'Booted', name: 'Booted', type: 'checkbox' }, // Checkbox for boolean
-    ];
-  }
-
-  return fields.map((field, index) => (
-    <TextField
-      key={index}
-      label={field.label}
-      name={field.name}
-      type={field.type}
-      fullWidth
-      margin="dense"
-      onChange={handleChange}
-      inputProps={field.inputProps}
-      {...(field.pattern && { inputProps: { pattern: field.pattern } })}
-    />
-  ));
-};
-
   return (
-    <Container>
-      <Grid container spacing={2}>
-        {/* Price Tiers Table */}
-        <Grid item xs={6}>
-          <h2>
-            Price Tiers
-            <Button
-              variant="contained"
-              color="primary"
-              size="small"
-              style={{ marginLeft: 10 }}
-              onClick={() => handleOpenDialog('Price Tier')}
-            >
-              Add New
-            </Button>
-          </h2>
-          <DataGrid
-            rows={priceTierData}
-            columns={priceTierColumns}
-            pageSize={pageSize}
-            rowsPerPageOptions={[5, 10, 25]}
-            onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
-            autoHeight
-          />
-        </Grid>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Cluster Management
+        </Typography>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+            <Tab label="Instances" value="instances" />
+            <Tab label="Instance Types" value="instanceTypes" />
+            <Tab label="Price Tiers" value="priceTiers" />
+          </Tabs>
+        </Box>
+      </Box>
 
-        {/* Instance Types Table */}
-        <Grid item xs={6}>
-          <h2>
-            Instance Types
-            <Button
-              variant="contained"
-              color="primary"
-              size="small"
-              style={{ marginLeft: 10 }}
-              onClick={() => handleOpenDialog('Instance Type')}
-            >
-              Add New
-            </Button>
-          </h2>
-          <DataGrid
-            rows={instanceTypeData}
-            columns={instanceTypeColumns}
-            pageSize={pageSize}
-            rowsPerPageOptions={[5, 10, 25]}
-            onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
-            autoHeight
-          />
-        </Grid>
-      </Grid>
+      {/* Instances Table */}
+      {activeTab === 'instances' && (
+        <>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => handleOpenDialog()}
+            sx={{ mb: 2 }}
+          >
+            Create New Instance
+          </Button>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Instance Name</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>System</TableCell>
+                  <TableCell>CPU Cores</TableCell>
+                  <TableCell>Memory (GB)</TableCell>
+                  <TableCell>Storage (GB)</TableCell>
+                  <TableCell>Price Tier</TableCell>
+                  <TableCell>Price/Hour</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {instances.map((instance) => (
+                  <TableRow key={instance.instanceid}>
+                    <TableCell>{instance.instancename}</TableCell>
+                    <TableCell>{instance.type}</TableCell>
+                    <TableCell>{instance.systemtype}</TableCell>
+                    <TableCell>{instance.cpucorecount}</TableCell>
+                    <TableCell>{instance.memory}</TableCell>
+                    <TableCell>{instance.storage}</TableCell>
+                    <TableCell>{instance.price_tier}</TableCell>
+                    <TableCell>${instance.priceperhour}/hr</TableCell>
+                    <TableCell>{instance.status ? 'Running' : 'Stopped'}</TableCell>
+                    <TableCell>
+                      <Button variant="outlined" color="primary" onClick={() => handleOpenDialog(instance)} sx={{ mr: 1 }}>
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color={instance.status ? 'warning' : 'success'}
+                        onClick={() => handleToggleStatus(instance)}
+                      >
+                        {instance.status ? 'Stop' : 'Start'}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
+      )}
 
-      <h2>
-        Instance Results
-        <Button
-          variant="contained"
-          color="primary"
-          size="small"
-          style={{ marginLeft: 10 }}
-          onClick={() => handleOpenDialog('Instance')}
-        >
-          Add New
-        </Button>
-      </h2>
-      <DataGrid
-        rows={instanceData}
-        columns={instanceColumns}
-        pageSize={pageSize}
-        rowsPerPageOptions={[5, 10, 25]}
-        onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
-        autoHeight
-      />
+      {/* Instance Types Table */}
+      {activeTab === 'instanceTypes' && (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow key="header-instance-types">
+                <TableCell key="type-name">Type Name</TableCell>
+                <TableCell key="system-type">System Type</TableCell>
+                <TableCell key="cpu-cores">CPU Cores</TableCell>
+                <TableCell key="memory">Memory (GB)</TableCell>
+                <TableCell key="storage">Storage (GB)</TableCell>
+                <TableCell key="price-tier">Price Tier</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {instanceTypes.map((type) => (
+                <TableRow key={type.instancetypeid}>
+                  <TableCell>{type.instancetype}</TableCell>
+                  <TableCell>{type.systemtype}</TableCell>
+                  <TableCell>{type.cpucorecount}</TableCell>
+                  <TableCell>{type.memory}</TableCell>
+                  <TableCell>{type.storage}</TableCell>
+                  <TableCell>{type.price_tier}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
-      {/* Dialog for adding new entries */}
+      {/* Price Tiers Table */}
+      {activeTab === 'priceTiers' && (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow key="header-price-tiers">
+                <TableCell key="tier-name">Tier Name</TableCell>
+                <TableCell key="price-per-hour">Price per Hour</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {priceTiers.map((tier) => (
+                <TableRow key={tier.pricetierId}>
+                  <TableCell>{tier.price_tier}</TableCell>
+                  <TableCell>${tier.priceperhour}/hr</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
       <Dialog open={openDialog} onClose={handleCloseDialog}>
-        <DialogTitle>Add New {dialogType}</DialogTitle>
+        <DialogTitle>
+          {selectedInstance ? 'Edit Instance' : 'Create New Instance'}
+        </DialogTitle>
         <DialogContent>
-          {renderFormFields()}
+          <Box component="form" sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Instance Name"
+              name="instanceName"
+              value={formData.instanceName}
+              onChange={handleInputChange}
+              margin="normal"
+            />
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Instance Type</InputLabel>
+              <Select
+                name="instanceTypeId"
+                value={formData.instanceTypeId}
+                onChange={handleInputChange}
+                label="Instance Type"
+              >
+                {instanceTypes.map((type) => (
+                  <MenuItem key={type.instancetypeid} value={type.instancetypeid}>
+                    {type.instancetype} ({type.systemtype}) - {type.cpucorecount} CPU, {type.memory}GB RAM
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="IP Address"
+              name="ipAddress"
+              value={formData.ipAddress}
+              onChange={handleInputChange}
+              margin="normal"
+            />
+            <TextField
+              fullWidth
+              label="Username"
+              name="username"
+              value={formData.username}
+              onChange={handleInputChange}
+              margin="normal"
+            />
+            <TextField
+              fullWidth
+              label="Password"
+              name="password"
+              type="password"
+              value={formData.password}
+              onChange={handleInputChange}
+              margin="normal"
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog} color="secondary">Cancel</Button>
-          <Button onClick={handleFormSubmit} color="primary">Submit</Button>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button onClick={handleSubmit} variant="contained" color="primary">
+            {selectedInstance ? 'Update' : 'Create'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Container>

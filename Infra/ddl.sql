@@ -31,6 +31,7 @@ CREATE TABLE InstanceType (
 CREATE TABLE Instance (
     InstanceId SERIAL PRIMARY KEY,
     InstanceTypeId INT NOT NULL,       -- Foreign key to InstanceType
+    InstanceName VARCHAR(100) NOT NULL,
     IPAddress INET NOT NULL,
     Username VARCHAR(100) NOT NULL,    -- Username for the instance login
     Password VARCHAR(255) NOT NULL,    -- Password for the instance login

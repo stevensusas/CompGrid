@@ -1,17 +1,35 @@
-// middlewares/authMiddleware.js
+require('dotenv').config();
 const jwt = require('jsonwebtoken');
 
-// Middleware to verify the JWT and attach user info to the request
-const authenticateToken = (req, res, next) => {
-    const token = req.header('Authorization')?.split(' ')[1];
-    if (!token) return res.status(401).send('Access denied. No token provided.');
+// Use the same hardcoded secret
+const JWT_SECRET = 'CompGrid_SuperSecretKey_2024';
 
-    jwt.verify(token, 'your_jwt_secret', (err, user) => {
-        if (err) return res.status(403).send('Invalid token.');
-        req.user = user; // Attach the user data to the request
-        next();
-    });
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      console.error('Token verification error:', err);
+      return res.status(403).json({ message: 'Invalid or expired token' });
+    }
+    
+    console.log('Decoded token:', decoded);
+    
+    req.user = {
+      id: decoded.id,
+      role: decoded.role
+    };
+    
+    next();
+  });
 };
+
+module.exports = { authenticateToken };
 
 // Middleware to allow only cluster owners
 const authenticateOwner = (req, res, next) => {
