@@ -175,5 +175,44 @@ router.get('/price-tiers', async (req, res) => {
   }
 });
 
+// Create new instance type
+router.post('/instance-types', async (req, res) => {
+  try {
+    const { instanceType, systemType, cpuCoreCount, memory, storage, priceTierId } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO InstanceType 
+       (InstanceType, SystemType, CPUCoreCount, Memory, Storage, PriceTierId)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [instanceType, systemType, cpuCoreCount, memory, storage, priceTierId]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating instance type:', error);
+    res.status(500).json({ message: 'Error creating instance type' });
+  }
+});
+
+// Create new price tier
+router.post('/price-tiers', async (req, res) => {
+  try {
+    const { tierName, pricePerHour } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO PriceTier (price_tier, PricePerHour)
+       VALUES ($1, $2)
+       RETURNING *`,
+      [tierName, pricePerHour]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating price tier:', error);
+    res.status(500).json({ message: 'Error creating price tier' });
+  }
+});
+
 module.exports = router;
 

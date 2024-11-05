@@ -25,6 +25,7 @@ import {
   Tabs,
   Tab
 } from '@mui/material';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 
 export default function InstanceManagementPage() {
   const { user } = useAuth();
@@ -32,6 +33,8 @@ export default function InstanceManagementPage() {
   const [instanceTypes, setInstanceTypes] = useState([]);
   const [priceTiers, setPriceTiers] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openInstanceTypeDialog, setOpenInstanceTypeDialog] = useState(false);
+  const [openPriceTierDialog, setOpenPriceTierDialog] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState(null);
   const [activeTab, setActiveTab] = useState('instances');
   const [formData, setFormData] = useState({
@@ -41,6 +44,20 @@ export default function InstanceManagementPage() {
     password: '',
     ipAddress: '',
     booted: false
+  });
+
+  const [instanceTypeForm, setInstanceTypeForm] = useState({
+    instanceType: '',
+    systemType: '',
+    cpuCoreCount: '',
+    memory: '',
+    storage: '',
+    priceTierId: ''
+  });
+
+  const [priceTierForm, setPriceTierForm] = useState({
+    tierName: '',
+    pricePerHour: ''
   });
 
   const fetchData = useCallback(async (endpoint) => {
@@ -95,30 +112,6 @@ export default function InstanceManagementPage() {
     loadData();
   }, [user, fetchData]);
 
-  const handleToggleStatus = async (instance) => {
-    try {
-      const response = await fetch(
-        `http://${config.server_host}:${config.server_port}/api/owner/instances/${instance.instanceid}/toggle`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${user.token}`
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const updatedInstances = await fetchData('/api/owner/instances');
-      setInstances(updatedInstances);
-    } catch (error) {
-      console.error('Error toggling instance status:', error);
-    }
-  };
-
   const handleOpenDialog = (instance = null) => {
     if (instance) {
       setSelectedInstance(instance);
@@ -164,6 +157,97 @@ export default function InstanceManagementPage() {
     handleCloseDialog();
   };
 
+  const handleOpenInstanceTypeDialog = () => {
+    setInstanceTypeForm({
+      instanceType: '',
+      systemType: '',
+      cpuCoreCount: '',
+      memory: '',
+      storage: '',
+      priceTierId: ''
+    });
+    setOpenInstanceTypeDialog(true);
+  };
+
+  const handleCloseInstanceTypeDialog = () => {
+    setOpenInstanceTypeDialog(false);
+  };
+
+  const handleOpenPriceTierDialog = () => {
+    setPriceTierForm({
+      tierName: '',
+      pricePerHour: ''
+    });
+    setOpenPriceTierDialog(true);
+  };
+
+  const handleClosePriceTierDialog = () => {
+    setOpenPriceTierDialog(false);
+  };
+
+  const handleInstanceTypeFormChange = (e) => {
+    const { name, value } = e.target;
+    console.log('Form change:', name, value);
+    setInstanceTypeForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handlePriceTierFormChange = (e) => {
+    const { name, value } = e.target;
+    setPriceTierForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleInstanceTypeSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`http://${config.server_host}:${config.server_port}/api/owner/instance-types`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        },
+        body: JSON.stringify(instanceTypeForm)
+      });
+
+      if (response.ok) {
+        // Refresh instance types data
+        const updatedTypes = await fetchData('/api/owner/instance-types');
+        setInstanceTypes(updatedTypes);
+        handleCloseInstanceTypeDialog();
+      }
+    } catch (error) {
+      console.error('Error creating instance type:', error);
+    }
+  };
+
+  const handlePriceTierSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`http://${config.server_host}:${config.server_port}/api/owner/price-tiers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        },
+        body: JSON.stringify(priceTierForm)
+      });
+
+      if (response.ok) {
+        // Refresh price tiers data
+        const updatedTiers = await fetchData('/api/owner/price-tiers');
+        setPriceTiers(updatedTiers);
+        handleClosePriceTierDialog();
+      }
+    } catch (error) {
+      console.error('Error creating price tier:', error);
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ mb: 3 }}>
@@ -202,8 +286,7 @@ export default function InstanceManagementPage() {
                   <TableCell>Storage (GB)</TableCell>
                   <TableCell>Price Tier</TableCell>
                   <TableCell>Price/Hour</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Actions</TableCell>
+                  <TableCell align="center">Status</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -217,18 +300,13 @@ export default function InstanceManagementPage() {
                     <TableCell>{instance.storage}</TableCell>
                     <TableCell>{instance.price_tier}</TableCell>
                     <TableCell>${instance.priceperhour}/hr</TableCell>
-                    <TableCell>{instance.status ? 'Running' : 'Stopped'}</TableCell>
-                    <TableCell>
-                      <Button variant="outlined" color="primary" onClick={() => handleOpenDialog(instance)} sx={{ mr: 1 }}>
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        color={instance.status ? 'warning' : 'success'}
-                        onClick={() => handleToggleStatus(instance)}
-                      >
-                        {instance.status ? 'Stop' : 'Start'}
-                      </Button>
+                    <TableCell align="center">
+                      <FiberManualRecordIcon 
+                        sx={{ 
+                          color: instance.status ? 'success.main' : 'error.main',
+                          fontSize: '12px'
+                        }} 
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -240,54 +318,74 @@ export default function InstanceManagementPage() {
 
       {/* Instance Types Table */}
       {activeTab === 'instanceTypes' && (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow key="header-instance-types">
-                <TableCell key="type-name">Type Name</TableCell>
-                <TableCell key="system-type">System Type</TableCell>
-                <TableCell key="cpu-cores">CPU Cores</TableCell>
-                <TableCell key="memory">Memory (GB)</TableCell>
-                <TableCell key="storage">Storage (GB)</TableCell>
-                <TableCell key="price-tier">Price Tier</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {instanceTypes.map((type) => (
-                <TableRow key={type.instancetypeid}>
-                  <TableCell>{type.instancetype}</TableCell>
-                  <TableCell>{type.systemtype}</TableCell>
-                  <TableCell>{type.cpucorecount}</TableCell>
-                  <TableCell>{type.memory}</TableCell>
-                  <TableCell>{type.storage}</TableCell>
-                  <TableCell>{type.price_tier}</TableCell>
+        <>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleOpenInstanceTypeDialog}
+            sx={{ mb: 2 }}
+          >
+            Create New Instance Type
+          </Button>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow key="header-instance-types">
+                  <TableCell key="type-name">Type Name</TableCell>
+                  <TableCell key="system-type">System Type</TableCell>
+                  <TableCell key="cpu-cores">CPU Cores</TableCell>
+                  <TableCell key="memory">Memory (GB)</TableCell>
+                  <TableCell key="storage">Storage (GB)</TableCell>
+                  <TableCell key="price-tier">Price Tier</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {instanceTypes.map((type) => (
+                  <TableRow key={type.instancetypeid}>
+                    <TableCell>{type.instancetype}</TableCell>
+                    <TableCell>{type.systemtype}</TableCell>
+                    <TableCell>{type.cpucorecount}</TableCell>
+                    <TableCell>{type.memory}</TableCell>
+                    <TableCell>{type.storage}</TableCell>
+                    <TableCell>{type.price_tier}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
       )}
 
       {/* Price Tiers Table */}
       {activeTab === 'priceTiers' && (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow key="header-price-tiers">
-                <TableCell key="tier-name">Tier Name</TableCell>
-                <TableCell key="price-per-hour">Price per Hour</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {priceTiers.map((tier) => (
-                <TableRow key={tier.pricetierId}>
-                  <TableCell>{tier.price_tier}</TableCell>
-                  <TableCell>${tier.priceperhour}/hr</TableCell>
+        <>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleOpenPriceTierDialog}
+            sx={{ mb: 2 }}
+          >
+            Create New Price Tier
+          </Button>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow key="header-price-tiers">
+                  <TableCell key="tier-name">Tier Name</TableCell>
+                  <TableCell key="price-per-hour">Price per Hour</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {priceTiers.map((tier) => (
+                  <TableRow key={tier.pricetierId}>
+                    <TableCell>{tier.price_tier}</TableCell>
+                    <TableCell>${tier.priceperhour}/hr</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
       )}
 
       <Dialog open={openDialog} onClose={handleCloseDialog}>
@@ -350,6 +448,129 @@ export default function InstanceManagementPage() {
           <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button onClick={handleSubmit} variant="contained" color="primary">
             {selectedInstance ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openInstanceTypeDialog} onClose={handleCloseInstanceTypeDialog}>
+        <DialogTitle>Create New Instance Type</DialogTitle>
+        <DialogContent>
+          <Box component="form" sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Instance Type Name"
+              name="instanceType"
+              value={instanceTypeForm.instanceType}
+              onChange={handleInstanceTypeFormChange}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="System Type"
+              name="systemType"
+              value={instanceTypeForm.systemType}
+              onChange={handleInstanceTypeFormChange}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="CPU Core Count"
+              name="cpuCoreCount"
+              type="number"
+              value={instanceTypeForm.cpuCoreCount}
+              onChange={handleInstanceTypeFormChange}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Memory (GB)"
+              name="memory"
+              type="number"
+              value={instanceTypeForm.memory}
+              onChange={handleInstanceTypeFormChange}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Storage (GB)"
+              name="storage"
+              type="number"
+              value={instanceTypeForm.storage}
+              onChange={handleInstanceTypeFormChange}
+              margin="normal"
+              required
+            />
+            <FormControl fullWidth margin="normal" required>
+              <InputLabel id="price-tier-label">Price Tier</InputLabel>
+              <Select
+                labelId="price-tier-label"
+                id="price-tier-select"
+                name="priceTierId"
+                value={instanceTypeForm.priceTierId}
+                onChange={handleInstanceTypeFormChange}
+                label="Price Tier"
+              >
+                {priceTiers.map((tier) => (
+                  <MenuItem 
+                    key={tier.pricetierId} 
+                    value={tier.pricetierId}
+                  >
+                    {tier.price_tier} (${tier.priceperhour}/hr)
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseInstanceTypeDialog}>Cancel</Button>
+          <Button 
+            onClick={handleInstanceTypeSubmit} 
+            variant="contained" 
+            color="primary"
+          >
+            Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openPriceTierDialog} onClose={handleClosePriceTierDialog}>
+        <DialogTitle>Create New Price Tier</DialogTitle>
+        <DialogContent>
+          <Box component="form" onSubmit={handlePriceTierSubmit} sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Tier Name"
+              name="tierName"
+              value={priceTierForm.tierName}
+              onChange={handlePriceTierFormChange}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Price per Hour ($)"
+              name="pricePerHour"
+              type="number"
+              value={priceTierForm.pricePerHour}
+              onChange={handlePriceTierFormChange}
+              margin="normal"
+              required
+              inputProps={{
+                step: "0.01",
+                min: "0"
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClosePriceTierDialog}>Cancel</Button>
+          <Button onClick={handlePriceTierSubmit} variant="contained" color="primary">
+            Create
           </Button>
         </DialogActions>
       </Dialog>
