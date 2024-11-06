@@ -39,11 +39,9 @@ export default function InstanceManagementPage() {
   const [activeTab, setActiveTab] = useState('instances');
   const [formData, setFormData] = useState({
     instanceName: '',
-    instanceTypeId: '',
-    username: '',
-    password: '',
-    ipAddress: '',
-    booted: false
+    instanceType: '',
+    priceTier: '',
+    status: 'running'
   });
 
   const [instanceTypeForm, setInstanceTypeForm] = useState({
@@ -52,7 +50,7 @@ export default function InstanceManagementPage() {
     cpuCoreCount: '',
     memory: '',
     storage: '',
-    priceTierId: ''
+    priceTierId: null
   });
 
   const [priceTierForm, setPriceTierForm] = useState({
@@ -164,7 +162,7 @@ export default function InstanceManagementPage() {
       cpuCoreCount: '',
       memory: '',
       storage: '',
-      priceTierId: ''
+      priceTierId: null
     });
     setOpenInstanceTypeDialog(true);
   };
@@ -187,10 +185,10 @@ export default function InstanceManagementPage() {
 
   const handleInstanceTypeFormChange = (e) => {
     const { name, value } = e.target;
-    console.log('Form change:', name, value);
-    setInstanceTypeForm(prev => ({
+    console.log('Selected Value:', value); // For debugging
+    setInstanceTypeForm((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value === '' ? null : Number(value),
     }));
   };
 
@@ -200,6 +198,30 @@ export default function InstanceManagementPage() {
       ...prev,
       [name]: value
     }));
+  };
+
+  const handleInstanceSubmit = async (e) => {
+    e.preventDefault();
+    console.log("FormData:", formData);
+    try {
+      const response = await fetch(`http://${config.server_host}:${config.server_port}/api/owner/instance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (response.ok) {
+        // Refresh instance types data
+        const updatedInstances = await fetchData('/api/owner/instances');
+        setInstances(updatedInstances);
+        handleCloseDialog();
+      }
+    } catch (error) {
+      console.error('Error creating instance type:', error);
+    }
   };
 
   const handleInstanceTypeSubmit = async (e) => {
@@ -242,6 +264,10 @@ export default function InstanceManagementPage() {
         const updatedTiers = await fetchData('/api/owner/price-tiers');
         setPriceTiers(updatedTiers);
         handleClosePriceTierDialog();
+      } else {
+        const errorData = await response.json();
+        console.error('Error creating price tier:', errorData.message);
+        // Optionally, display an error message to the user
       }
     } catch (error) {
       console.error('Error creating price tier:', error);
@@ -403,28 +429,28 @@ export default function InstanceManagementPage() {
               margin="normal"
             />
             <FormControl fullWidth margin="normal">
-              <InputLabel>Instance Type</InputLabel>
-              <Select
-                name="instanceTypeId"
-                value={formData.instanceTypeId}
-                onChange={handleInputChange}
-                label="Instance Type"
-              >
-                {instanceTypes.map((type) => (
-                  <MenuItem key={type.instancetypeid} value={type.instancetypeid}>
-                    {type.instancetype} ({type.systemtype}) - {type.cpucorecount} CPU, {type.memory}GB RAM
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              fullWidth
-              label="IP Address"
-              name="ipAddress"
-              value={formData.ipAddress}
+            <InputLabel>Instance Type</InputLabel>
+            <Select
+              name="instanceType"
+              value={formData.instanceType}
               onChange={handleInputChange}
-              margin="normal"
-            />
+              label="Instance Type"
+            >
+              {instanceTypes.map((type) => (
+                <MenuItem key={type.instancetypeid} value={type.instancetypeid}>
+                  {type.instancetype} ({type.systemtype}) - {type.cpucorecount} CPU, {type.memory}GB RAM
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            label="IP Address"
+            name="ipAddress"  // Ensure this matches the formData field name
+            value={formData.ipAddress}
+            onChange={handleInputChange}
+            margin="normal"
+          />
             <TextField
               fullWidth
               label="Username"
@@ -446,7 +472,7 @@ export default function InstanceManagementPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained" color="primary">
+          <Button onClick={handleInstanceSubmit} variant="contained" color="primary">
             {selectedInstance ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
@@ -510,10 +536,13 @@ export default function InstanceManagementPage() {
                 labelId="price-tier-label"
                 id="price-tier-select"
                 name="priceTierId"
-                value={instanceTypeForm.priceTierId}
+                value={instanceTypeForm.priceTierId ?? ''}
                 onChange={handleInstanceTypeFormChange}
                 label="Price Tier"
               >
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
                 {priceTiers.map((tier) => (
                   <MenuItem 
                     key={tier.pricetierId} 

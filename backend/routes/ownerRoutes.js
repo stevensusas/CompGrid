@@ -176,6 +176,26 @@ router.get('/price-tiers', async (req, res) => {
 });
 
 // Create new instance type
+router.post('/instance', async (req, res) => {
+  try {
+    const { instanceName, instanceType, ipAddress, username, password } = req.body;
+    const result = await pool.query(
+      `INSERT INTO instance 
+       (instancename, instancetypeid, ipaddress, username, password, booted, allocateduserid)
+       VALUES ($1, $2, $3, $4, $5, False, NULL)
+       RETURNING *`,
+      [instanceName, instanceType, ipAddress, username, password]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating instance:', error);
+    res.status(500).json({ message: 'Error creating instance' });
+  }
+});
+
+
+// Create new instance type
 router.post('/instance-types', async (req, res) => {
   try {
     const { instanceType, systemType, cpuCoreCount, memory, storage, priceTierId } = req.body;
