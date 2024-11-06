@@ -46,8 +46,8 @@ export default function NavBar() {
           <NavText href='/' text='COMPGRID' isMain />
           {user ? (
             <>
-              <NavText href='/albums' text='ANALYTICS' />
-              <NavText href='/songs' text='INSTANCES' />
+              <NavText href='/analytics' text='ANALYTICS' />
+              <NavText href='/ownermanage' text='MY CLUSTER' />
               <Button 
                 color="inherit" 
                 onClick={logout} 

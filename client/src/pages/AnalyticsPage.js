@@ -5,7 +5,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Toolti
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend);
 
-export default function BillingPage() {
+export default function AnalyticsPage() {
   const [billingByUser, setBillingByUser] = useState([]);
   const [monthlyBillingTrend, setMonthlyBillingTrend] = useState([]);
   const [billingBySystemType, setBillingBySystemType] = useState([]);

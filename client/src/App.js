@@ -7,8 +7,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NavBar from './components/NavBar';
 import HomePage from './pages/HomePage';
-import AlbumsPage from './pages/AlbumsPage';
-import SongsPage from './pages/SongsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import OwnerManagePage from './pages/OwnerManagePage';
 import AlbumInfoPage from './pages/AlbumInfoPage';
 
 // Protected Route component
@@ -51,9 +51,9 @@ export default function App() {
                 <HomePage />
               </ProtectedRoute>
             } />
-            <Route path="/albums" element={
+            <Route path="/analytics" element={
               <ProtectedRoute>
-                <AlbumsPage />
+                <AnalyticsPage />
               </ProtectedRoute>
             } />
             <Route path="/albums/:album_id" element={
@@ -61,9 +61,9 @@ export default function App() {
                 <AlbumInfoPage />
               </ProtectedRoute>
             } />
-            <Route path="/songs" element={
+            <Route path="/ownermanage" element={
               <ProtectedRoute>
-                <SongsPage />
+                <OwnerManagePage />
               </ProtectedRoute>
             } />
 

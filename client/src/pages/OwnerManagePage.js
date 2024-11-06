@@ -27,7 +27,7 @@ import {
 } from '@mui/material';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 
-export default function InstanceManagementPage() {
+export default function OwnerManagePage() {
   const { user } = useAuth();
   const [instances, setInstances] = useState([]);
   const [instanceTypes, setInstanceTypes] = useState([]);
