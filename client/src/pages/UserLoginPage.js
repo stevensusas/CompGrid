@@ -104,7 +104,7 @@ export default function UserLoginPage() {
             >
               Login
             </Button>
-            <Box sx={{ textAlign: 'center' }}>
+            <Box sx={{ textAlign: 'center', mb: 2 }}>
               <Typography variant="body2">
                 Don't have an account?{' '}
                 <Link to="/userregister" style={{ textDecoration: 'none' }}>
@@ -112,6 +112,22 @@ export default function UserLoginPage() {
                 </Link>
               </Typography>
             </Box>
+            <Button
+              fullWidth
+              variant="contained"
+              sx={{ 
+                mt: 1,
+                bgcolor: 'green',
+                color: 'white',
+                '&:hover': {
+                  bgcolor: 'darkgreen',
+                }
+              }}
+              component={Link}
+              to="/ownerlogin"
+            >
+              I am an Owner
+            </Button>
           </form>
         </Paper>
       </Box>
