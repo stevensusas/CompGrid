@@ -5,7 +5,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Toolti
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend);
 
-export default function HomePage() {
+export default function UserHomePage() {
   const [usageByInstance, setUsageByInstance] = useState([]);
   const [averageUsagePerUser, setAverageUsagePerUser] = useState([]);
   const [dailyUsageTrend, setDailyUsageTrend] = useState([]);

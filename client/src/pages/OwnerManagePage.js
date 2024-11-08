@@ -327,11 +327,11 @@ export default function OwnerManagePage() {
                     <TableCell>{instance.price_tier}</TableCell>
                     <TableCell>${instance.priceperhour}/hr</TableCell>
                     <TableCell align="center">
-                      <FiberManualRecordIcon 
-                        sx={{ 
+                      <FiberManualRecordIcon
+                        sx={{
                           color: instance.status ? 'success.main' : 'error.main',
                           fontSize: '12px'
-                        }} 
+                        }}
                       />
                     </TableCell>
                   </TableRow>
@@ -429,28 +429,28 @@ export default function OwnerManagePage() {
               margin="normal"
             />
             <FormControl fullWidth margin="normal">
-            <InputLabel>Instance Type</InputLabel>
-            <Select
-              name="instanceType"
-              value={formData.instanceType}
+              <InputLabel>Instance Type</InputLabel>
+              <Select
+                name="instanceType"
+                value={formData.instanceType}
+                onChange={handleInputChange}
+                label="Instance Type"
+              >
+                {instanceTypes.map((type) => (
+                  <MenuItem key={type.instancetypeid} value={type.instancetypeid}>
+                    {type.instancetype} ({type.systemtype}) - {type.cpucorecount} CPU, {type.memory}GB RAM
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="IP Address"
+              name="ipAddress"  // Ensure this matches the formData field name
+              value={formData.ipAddress}
               onChange={handleInputChange}
-              label="Instance Type"
-            >
-              {instanceTypes.map((type) => (
-                <MenuItem key={type.instancetypeid} value={type.instancetypeid}>
-                  {type.instancetype} ({type.systemtype}) - {type.cpucorecount} CPU, {type.memory}GB RAM
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            label="IP Address"
-            name="ipAddress"  // Ensure this matches the formData field name
-            value={formData.ipAddress}
-            onChange={handleInputChange}
-            margin="normal"
-          />
+              margin="normal"
+            />
             <TextField
               fullWidth
               label="Username"
@@ -544,8 +544,8 @@ export default function OwnerManagePage() {
                   <em>None</em>
                 </MenuItem>
                 {priceTiers.map((tier) => (
-                  <MenuItem 
-                    key={tier.pricetierId} 
+                  <MenuItem
+                    key={tier.pricetierId}
                     value={tier.pricetierId}
                   >
                     {tier.price_tier} (${tier.priceperhour}/hr)
@@ -557,9 +557,9 @@ export default function OwnerManagePage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseInstanceTypeDialog}>Cancel</Button>
-          <Button 
-            onClick={handleInstanceTypeSubmit} 
-            variant="contained" 
+          <Button
+            onClick={handleInstanceTypeSubmit}
+            variant="contained"
             color="primary"
           >
             Create

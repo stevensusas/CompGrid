@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import {
   Container,
   Paper,
@@ -12,38 +11,45 @@ import {
 } from '@mui/material';
 import config from '../config.json';
 
-export default function LoginPage() {
+export default function UserRegisterPage() {
   const [formData, setFormData] = useState({
     username: '',
-    password: ''
+    password: '',
+    confirmPassword: ''
   });
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     try {
-      const response = await fetch(`http://${config.server_host}:${config.server_port}/api/owner/login-owner`, {
+      const response = await fetch(`http://${config.server_host}:${config.server_port}/api/user/register-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          username: formData.username,
+          password: formData.password
+        }),
       });
 
       const data = await response.json();
       
       if (response.ok) {
-        console.log('Login response:', data);
-        login(data.user, data.token);
-        navigate('/');
+        // Registration successful, redirect to login
+        navigate('/userlogin');
       } else {
-        setError(data.message || 'Login failed');
+        setError(data.message || 'Registration failed');
       }
     } catch (err) {
-      console.error('Login error:', err);
-      setError('An error occurred during login');
+      console.error('Registration error:', err);
+      setError('An error occurred during registration');
     }
   };
 
@@ -66,7 +72,7 @@ export default function LoginPage() {
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Typography variant="h4" align="center" gutterBottom>
-            Owner Login
+            User Registration
           </Typography>
           
           {error && (
@@ -95,6 +101,22 @@ export default function LoginPage() {
               value={formData.password}
               onChange={handleChange}
             />
+            <TextField
+              fullWidth
+              label="Confirm Password"
+              name="confirmPassword"
+              type="password"
+              margin="normal"
+              required
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              error={formData.password !== formData.confirmPassword}
+              helperText={
+                formData.password !== formData.confirmPassword
+                  ? 'Passwords do not match'
+                  : ''
+              }
+            />
             <Button
               fullWidth
               variant="contained"
@@ -102,13 +124,13 @@ export default function LoginPage() {
               type="submit"
               sx={{ mt: 3, mb: 2 }}
             >
-              Login
+              Register
             </Button>
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="body2">
-                Don't have an account?{' '}
-                <Link to="/register" style={{ textDecoration: 'none' }}>
-                  Register here
+                Already have an account?{' '}
+                <Link to="/userlogin" style={{ textDecoration: 'none' }}>
+                  Login here
                 </Link>
               </Typography>
             </Box>

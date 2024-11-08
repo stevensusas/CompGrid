@@ -11,7 +11,7 @@ import {
 } from '@mui/material';
 import config from '../config.json';
 
-export default function RegisterPage() {
+export default function OwnerRegisterPage() {
   const [formData, setFormData] = useState({
     username: '',
     password: '',

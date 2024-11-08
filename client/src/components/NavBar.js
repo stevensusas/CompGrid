@@ -32,22 +32,48 @@ export default function NavBar() {
   const { user, logout } = useAuth();
   
   // List of paths where navbar should be hidden
-  const hideNavbarPaths = ['/login', '/register'];
+  const hideNavbarPaths = ['/ownerlogin', '/ownerregister', '/userlogin', '/userregister'];
   
   // Check if current path is in the hide list
   if (hideNavbarPaths.includes(location.pathname)) {
-    return null;  // Return nothing if we're on login or register page
+    return null;
   }
+
+  const getClusterLink = () => {
+    if (user?.role === 'admin') {
+      return '/ownermanage';
+    } else if (user?.role === 'user') {
+      return '/usermanage';
+    }
+    return '/';
+  };
+
+  const getClusterText = () => {
+    if (user?.role === 'admin') {
+      return 'MANAGE CLUSTER';
+    } else if (user?.role === 'user') {
+      return 'MY INSTANCES';
+    }
+    return 'CLUSTER';
+  };
+
+  const getHomeLink = () => {
+    if (user?.role === 'admin') {
+      return '/ownerhome';
+    } else if (user?.role === 'user') {
+      return '/userhome';
+    }
+    return '/';
+  };
 
   return (
     <AppBar position='static'>
       <Container maxWidth='xl'>
         <Toolbar disableGutters>
-          <NavText href='/' text='COMPGRID' isMain />
-          {user ? (
+          <NavText href={getHomeLink()} text='COMPGRID' isMain />
+          {user && (
             <>
-              <NavText href='/analytics' text='ANALYTICS' />
-              <NavText href='/ownermanage' text='MY CLUSTER' />
+              <NavText href={getClusterLink()} text={getClusterText()} />
               <Button 
                 color="inherit" 
                 onClick={logout} 
@@ -56,7 +82,7 @@ export default function NavBar() {
                 Logout
               </Button>
             </>
-          ) : null}
+          )}
         </Toolbar>
       </Container>
     </AppBar>

@@ -3,20 +3,24 @@ import { CssBaseline, ThemeProvider } from '@mui/material'
 import { indigo, amber } from '@mui/material/colors'
 import { createTheme } from "@mui/material/styles";
 import { AuthProvider, useAuth } from './context/AuthContext';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
+import OwnerLoginPage from './pages/OwnerLoginPage';
+import OwnerRegisterPage from './pages/OwnerRegisterPage';
 import NavBar from './components/NavBar';
-import HomePage from './pages/HomePage';
-import AnalyticsPage from './pages/AnalyticsPage';
+import OwnerHomePage from './pages/OwnerHomePage';
 import OwnerManagePage from './pages/OwnerManagePage';
 import AlbumInfoPage from './pages/AlbumInfoPage';
+import UserLoginPage from './pages/UserLoginPage';
+import UserRegisterPage from './pages/UserRegisterPage';
+import UserHomePage from './pages/UserHomePage';
+import UserManagePage from './pages/UserManagePage';
+
 
 // Protected Route component
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth();  // Use the auth context instead of directly checking localStorage
   
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/ownerlogin" replace />;
   }
   
   return (
@@ -42,23 +46,16 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             {/* Public Routes - no NavBar */}
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/ownerlogin" element={<OwnerLoginPage />} />
+            <Route path="/ownerregister" element={<OwnerRegisterPage />} />
+            <Route path="/userlogin" element={<UserLoginPage />} />
+            <Route path="/userregister" element={<UserRegisterPage />} />
             
+
             {/* Protected Routes - include NavBar */}
-            <Route path="/" element={
+            <Route path="/ownerhome" element={
               <ProtectedRoute>
-                <HomePage />
-              </ProtectedRoute>
-            } />
-            <Route path="/analytics" element={
-              <ProtectedRoute>
-                <AnalyticsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/albums/:album_id" element={
-              <ProtectedRoute>
-                <AlbumInfoPage />
+                <OwnerHomePage />
               </ProtectedRoute>
             } />
             <Route path="/ownermanage" element={
@@ -66,9 +63,20 @@ export default function App() {
                 <OwnerManagePage />
               </ProtectedRoute>
             } />
+            <Route path="/userhome" element={
+              <ProtectedRoute>
+                <UserHomePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/usermanage" element={
+              <ProtectedRoute>
+                <UserManagePage />
+              </ProtectedRoute>
+            } />
+
 
             {/* Catch all other routes and redirect to login */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to="/ownerlogin" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
