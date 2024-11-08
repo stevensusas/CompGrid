@@ -137,6 +137,26 @@ router.get('/instances', async (req, res) => {
   }
 });
 
+router.get('/users', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        u.UserId,
+        u.Username,
+        COUNT(i.InstanceId) as assigned_instances
+      FROM Users u
+      LEFT JOIN Instance i ON u.UserId = i.AllocatedUserId
+      WHERE u.Role = 'user'
+      GROUP BY u.UserId, u.Username
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ message: 'Error fetching users' });
+  }
+});
+
 router.get('/instance-types', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -231,6 +251,67 @@ router.post('/price-tiers', async (req, res) => {
   } catch (error) {
     console.error('Error creating price tier:', error);
     res.status(500).json({ message: 'Error creating price tier' });
+  }
+});
+
+router.post('/assign-instance', async (req, res) => {
+  try {
+    const { userId, instanceId } = req.body;
+    
+    const result = await pool.query(`
+      UPDATE Instance 
+      SET AllocatedUserId = $1 
+      WHERE InstanceId = $2 
+      RETURNING *
+    `, [userId, instanceId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error assigning instance:', error);
+    res.status(500).json({ message: 'Error assigning instance' });
+  }
+});
+
+router.get('/user/:userId/instances', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const result = await pool.query(`
+      SELECT 
+        i.instanceid,
+        i.instancename,
+        i.booted as status,
+        it.instancetype as type,
+        it.systemtype,
+        it.cpucorecount,
+        it.memory,
+        it.storage,
+        pt.price_tier,
+        pt.priceperhour
+      FROM Instance i
+      JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+      JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
+      WHERE i.allocateduserid = $1
+    `, [userId]);
+
+    // Transform the data to ensure proper casing and format
+    const transformedRows = result.rows.map(row => ({
+      ...row,
+      status: Boolean(row.status), // Convert to boolean if needed
+      cpucorecount: Number(row.cpucorecount),
+      storage: Number(row.storage),
+      memory: Number(row.memory),
+      priceperhour: Number(row.priceperhour)
+    }));
+
+    res.json(transformedRows);
+  } catch (error) {
+    console.error('Error fetching user instances:', error);
+    res.status(500).json({ message: 'Error fetching user instances' });
   }
 });
 

@@ -58,6 +58,19 @@ export default function OwnerManagePage() {
     pricePerHour: ''
   });
 
+  const [users, setUsers] = useState([]);
+
+  const [openAssignDialog, setOpenAssignDialog] = useState(false);
+  const [assignForm, setAssignForm] = useState({
+    userId: '',
+    instanceId: ''
+  });
+  const [unassignedInstances, setUnassignedInstances] = useState([]);
+
+  const [userDetailsDialog, setUserDetailsDialog] = useState(false);
+  const [selectedUserInstances, setSelectedUserInstances] = useState([]);
+  const [selectedUserName, setSelectedUserName] = useState('');
+
   const fetchData = useCallback(async (endpoint) => {
     try {
       if (!user || !user.token) {
@@ -93,15 +106,18 @@ export default function OwnerManagePage() {
       if (!user) return;
 
       try {
-        const [instancesData, typesData, tiersData] = await Promise.all([
+        const [instancesData, typesData, tiersData, usersData] = await Promise.all([
           fetchData('/api/owner/instances'),
           fetchData('/api/owner/instance-types'),
-          fetchData('/api/owner/price-tiers')
+          fetchData('/api/owner/price-tiers'),
+          fetchData('/api/owner/users')
         ]);
 
+        console.log('Fetched instances:', instancesData); // Debug log
         setInstances(instancesData);
         setInstanceTypes(typesData);
         setPriceTiers(tiersData);
+        setUsers(usersData);
       } catch (error) {
         console.error('Error loading data:', error);
       }
@@ -274,6 +290,65 @@ export default function OwnerManagePage() {
     }
   };
 
+  const handleOpenAssignDialog = (userId) => {
+    console.log('Opening dialog for user:', userId); // Debug log
+    setAssignForm(prev => ({ ...prev, userId }));
+    // Filter for unassigned instances
+    const available = instances.filter(instance => !instance.allocateduserid);
+    setUnassignedInstances(available);
+    setOpenAssignDialog(true);
+  };
+
+  const handleCloseAssignDialog = () => {
+    setOpenAssignDialog(false);
+    setAssignForm({ userId: '', instanceId: '' });
+  };
+
+  const handleAssignSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`http://${config.server_host}:${config.server_port}/api/owner/assign-instance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        },
+        body: JSON.stringify(assignForm)
+      });
+
+      if (response.ok) {
+        // Refresh both instances and users data
+        const [updatedInstances, updatedUsers] = await Promise.all([
+          fetchData('/api/owner/instances'),
+          fetchData('/api/owner/users')
+        ]);
+        setInstances(updatedInstances);
+        setUsers(updatedUsers);
+        handleCloseAssignDialog();
+      }
+    } catch (error) {
+      console.error('Error assigning instance:', error);
+    }
+  };
+
+  const handleOpenUserDetails = async (userId, username) => {
+    try {
+      const userInstances = await fetchData(`/api/owner/user/${userId}/instances`);
+      console.log('Fetched user instances:', userInstances);
+      setSelectedUserInstances(userInstances);
+      setSelectedUserName(username);
+      setUserDetailsDialog(true);
+    } catch (error) {
+      console.error('Error fetching user instances:', error);
+    }
+  };
+
+  const handleCloseUserDetails = () => {
+    setUserDetailsDialog(false);
+    setSelectedUserInstances([]);
+    setSelectedUserName('');
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ mb: 3 }}>
@@ -285,6 +360,7 @@ export default function OwnerManagePage() {
             <Tab label="Instances" value="instances" />
             <Tab label="Instance Types" value="instanceTypes" />
             <Tab label="Price Tiers" value="priceTiers" />
+            <Tab label="Users" value="users" />
           </Tabs>
         </Box>
       </Box>
@@ -411,6 +487,112 @@ export default function OwnerManagePage() {
               </TableBody>
             </Table>
           </TableContainer>
+        </>
+      )}
+
+      {/* Users Table */}
+      {activeTab === 'users' && (
+        <>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Username</TableCell>
+                  <TableCell align="right">Assigned Instances</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.userid}>
+                    <TableCell>
+                      <Button
+                        sx={{ textTransform: 'none' }}
+                        onClick={() => handleOpenUserDetails(user.userid, user.username)}
+                      >
+                        {user.username}
+                      </Button>
+                    </TableCell>
+                    <TableCell align="right">{user.assigned_instances}</TableCell>
+                    <TableCell align="right">
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => handleOpenAssignDialog(user.userid)}
+                      >
+                        Assign Instance
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {/* User Details Dialog */}
+          <Dialog 
+            open={userDetailsDialog} 
+            onClose={handleCloseUserDetails}
+            maxWidth="lg"
+            fullWidth
+          >
+            <DialogTitle>
+              Instances Assigned to {selectedUserName}
+            </DialogTitle>
+            <DialogContent>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Instance Name</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>System</TableCell>
+                      <TableCell>CPU Cores</TableCell>
+                      <TableCell>Memory (GB)</TableCell>
+                      <TableCell>Storage (GB)</TableCell>
+                      <TableCell>Price Tier</TableCell>
+                      <TableCell>Price/Hour</TableCell>
+                      <TableCell align="center">Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {selectedUserInstances.map((instance) => (
+                      <TableRow key={instance.instanceid}>
+                        <TableCell>{instance.instancename}</TableCell>
+                        <TableCell>{instance.type}</TableCell>
+                        <TableCell>{instance.systemtype}</TableCell>
+                        <TableCell>{instance.cpucorecount}</TableCell>
+                        <TableCell>{instance.memory}</TableCell>
+                        <TableCell>{instance.storage}</TableCell>
+                        <TableCell>{instance.price_tier}</TableCell>
+                        <TableCell>${instance.priceperhour}/hr</TableCell>
+                        <TableCell align="center">
+                          <FiberManualRecordIcon
+                            sx={{
+                              color: instance.status === 'running' ? 'success.main' : 'error.main',
+                              fontSize: '12px'
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {selectedUserInstances.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={9} align="center">
+                          No instances assigned to this user
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCloseUserDetails}>Close</Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Existing Assign Instance Dialog remains here */}
         </>
       )}
 
@@ -600,6 +782,43 @@ export default function OwnerManagePage() {
           <Button onClick={handleClosePriceTierDialog}>Cancel</Button>
           <Button onClick={handlePriceTierSubmit} variant="contained" color="primary">
             Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign Instance Dialog - Make sure this is outside the TableContainer */}
+      <Dialog 
+        open={openAssignDialog} 
+        onClose={() => setOpenAssignDialog(false)}
+      >
+        <DialogTitle>Assign Instance to User</DialogTitle>
+        <DialogContent>
+          <Box component="form" sx={{ mt: 2 }}>
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Instance</InputLabel>
+              <Select
+                value={assignForm.instanceId}
+                onChange={(e) => setAssignForm(prev => ({ ...prev, instanceId: e.target.value }))}
+                label="Instance"
+              >
+                {unassignedInstances.map((instance) => (
+                  <MenuItem key={instance.instanceid} value={instance.instanceid}>
+                    {instance.instancename} ({instance.type})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAssignDialog(false)}>Cancel</Button>
+          <Button 
+            onClick={handleAssignSubmit} 
+            variant="contained" 
+            color="primary"
+            disabled={!assignForm.instanceId}
+          >
+            Assign
           </Button>
         </DialogActions>
       </Dialog>
