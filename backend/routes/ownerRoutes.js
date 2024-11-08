@@ -161,9 +161,21 @@ router.get('/instance-types', async (req, res) => {
         it.Storage,
         it.Memory,
         pt.price_tier,
-        pt.PricePerHour
+        pt.PricePerHour,
+        COUNT(i.InstanceId) as total_instances,
+        COUNT(i.AllocatedUserId) as assigned_count
       FROM InstanceType it
       JOIN PriceTier pt ON it.PriceTierId = pt.PriceTierId
+      LEFT JOIN Instance i ON it.InstanceTypeId = i.InstanceTypeId
+      GROUP BY 
+        it.InstanceTypeId,
+        it.InstanceType,
+        it.SystemType,
+        it.CPUCoreCount,
+        it.Storage,
+        it.Memory,
+        pt.price_tier,
+        pt.PricePerHour
     `);
     res.json(result.rows);
   } catch (error) {

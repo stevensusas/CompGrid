@@ -23,9 +23,25 @@ import {
   Typography,
   Box,
   Tabs,
-  Tab
+  Tab,
+  LinearProgress,
+  Tooltip
 } from '@mui/material';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import { styled } from '@mui/material/styles';
+
+// Add this styled component for custom progress bar
+const CustomLinearProgress = styled(LinearProgress)(({ theme }) => ({
+  height: 10,
+  borderRadius: 5,
+  [`&.MuiLinearProgress-colorPrimary`]: {
+    backgroundColor: theme.palette.grey[200],
+  },
+  [`& .MuiLinearProgress-bar`]: {
+    borderRadius: 5,
+    backgroundColor: theme.palette.primary.main,
+  },
+}));
 
 export default function OwnerManagePage() {
   const { user } = useAuth();
@@ -457,13 +473,14 @@ export default function OwnerManagePage() {
           <TableContainer component={Paper}>
             <Table>
               <TableHead>
-                <TableRow key="header-instance-types">
-                  <TableCell key="type-name">Type Name</TableCell>
-                  <TableCell key="system-type">System Type</TableCell>
-                  <TableCell key="cpu-cores">CPU Cores</TableCell>
-                  <TableCell key="memory">Memory (GB)</TableCell>
-                  <TableCell key="storage">Storage (GB)</TableCell>
-                  <TableCell key="price-tier">Price Tier</TableCell>
+                <TableRow>
+                  <TableCell>Type Name</TableCell>
+                  <TableCell>System Type</TableCell>
+                  <TableCell>CPU Cores</TableCell>
+                  <TableCell>Memory (GB)</TableCell>
+                  <TableCell>Storage (GB)</TableCell>
+                  <TableCell>Price Tier</TableCell>
+                  <TableCell>Availability</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -475,6 +492,33 @@ export default function OwnerManagePage() {
                     <TableCell>{type.memory}</TableCell>
                     <TableCell>{type.storage}</TableCell>
                     <TableCell>{type.price_tier}</TableCell>
+                    <TableCell>
+                      <Tooltip 
+                        title={`${type.assigned_count} of ${type.total_instances} instances assigned`}
+                        placement="top"
+                      >
+                        <Box sx={{ width: '100%', mr: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <Typography variant="body2" color="text.secondary" sx={{ minWidth: 100 }}>
+                              {type.assigned_count}/{type.total_instances}
+                            </Typography>
+                          </Box>
+                          <CustomLinearProgress
+                            variant="determinate"
+                            value={(type.assigned_count / type.total_instances) * 100}
+                            sx={{
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: (type.assigned_count / type.total_instances) > 0.8 
+                                  ? 'error.main' 
+                                  : (type.assigned_count / type.total_instances) > 0.5 
+                                    ? 'warning.main' 
+                                    : 'success.main'
+                              }
+                            }}
+                          />
+                        </Box>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
