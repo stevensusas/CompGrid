@@ -104,33 +104,26 @@ router.get('/instances', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        i.InstanceId as instanceid,
-        i.InstanceName as instancename,
-        i.IPAddress as ipaddress,
-        i.Booted as status,
-        it.InstanceType as type,
-        it.SystemType as systemtype,
-        it.CPUCoreCount as cpucorecount,
-        it.Storage as storage,
-        it.Memory as memory,
+        i.instanceid,
+        i.instancename,
+        i.ipaddress,
+        i.username,
+        i.password,
+        i.booted as status,
+        i.allocateduserid,
+        it.instancetype as type,
+        it.systemtype,
+        it.cpucorecount,
+        it.memory,
+        it.storage,
         pt.price_tier,
-        pt.PricePerHour as priceperhour
+        pt.priceperhour
       FROM Instance i
-      LEFT JOIN InstanceType it ON i.InstanceTypeId = it.InstanceTypeId
-      LEFT JOIN PriceTier pt ON it.PriceTierId = pt.PriceTierId
+      JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+      JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
     `);
 
-    // Transform the data to ensure proper casing and format
-    const transformedRows = result.rows.map(row => ({
-      ...row,
-      status: Boolean(row.status), // Convert to boolean
-      cpucorecount: Number(row.cpucorecount),
-      storage: Number(row.storage),
-      memory: Number(row.memory),
-      priceperhour: Number(row.priceperhour)
-    }));
-
-    res.json(transformedRows);
+    res.json(result.rows);
   } catch (error) {
     console.error('Error fetching instances:', error);
     res.status(500).json({ message: 'Error fetching instances' });

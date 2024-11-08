@@ -71,6 +71,9 @@ export default function OwnerManagePage() {
   const [selectedUserInstances, setSelectedUserInstances] = useState([]);
   const [selectedUserName, setSelectedUserName] = useState('');
 
+  const [connectionDetailsDialog, setConnectionDetailsDialog] = useState(false);
+  const [selectedConnectionDetails, setSelectedConnectionDetails] = useState(null);
+
   const fetchData = useCallback(async (endpoint) => {
     try {
       if (!user || !user.token) {
@@ -349,6 +352,16 @@ export default function OwnerManagePage() {
     setSelectedUserName('');
   };
 
+  const handleOpenConnectionDetails = (instance) => {
+    setSelectedConnectionDetails(instance);
+    setConnectionDetailsDialog(true);
+  };
+
+  const handleCloseConnectionDetails = () => {
+    setConnectionDetailsDialog(false);
+    setSelectedConnectionDetails(null);
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ mb: 3 }}>
@@ -394,7 +407,19 @@ export default function OwnerManagePage() {
               <TableBody>
                 {instances.map((instance) => (
                   <TableRow key={instance.instanceid}>
-                    <TableCell>{instance.instancename}</TableCell>
+                    <TableCell>
+                      <Button
+                        sx={{ textTransform: 'none' }}
+                        onClick={() => handleOpenConnectionDetails({
+                          instancename: instance.instancename,
+                          ipaddress: instance.ipaddress,
+                          username: instance.username,  // From database
+                          password: instance.password   // From database
+                        })}
+                      >
+                        {instance.instancename}
+                      </Button>
+                    </TableCell>
                     <TableCell>{instance.type}</TableCell>
                     <TableCell>{instance.systemtype}</TableCell>
                     <TableCell>{instance.cpucorecount}</TableCell>
@@ -820,6 +845,33 @@ export default function OwnerManagePage() {
           >
             Assign
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={connectionDetailsDialog}
+        onClose={handleCloseConnectionDetails}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Connection Details for {selectedConnectionDetails?.instancename}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              <strong>IP Address:</strong> {selectedConnectionDetails?.ipaddress}
+            </Typography>
+            <Typography variant="subtitle1" gutterBottom>
+              <strong>Username:</strong> {selectedConnectionDetails?.username}
+            </Typography>
+            <Typography variant="subtitle1" gutterBottom>
+              <strong>Password:</strong> {selectedConnectionDetails?.password}
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseConnectionDetails}>Close</Button>
         </DialogActions>
       </Dialog>
     </Container>
