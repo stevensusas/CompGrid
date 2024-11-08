@@ -14,10 +14,14 @@ import {
   Box
 } from '@mui/material';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 
 export default function UserManagePage() {
   const { user } = useAuth();
   const [instances, setInstances] = useState([]);
+  const [orderBy, setOrderBy] = useState('');
+  const [orderDirection, setOrderDirection] = useState('asc');
 
   const fetchData = useCallback(async (endpoint) => {
     try {
@@ -44,6 +48,74 @@ export default function UserManagePage() {
       return [];
     }
   }, [user]);
+
+  const handleSort = (column) => {
+    const isAsc = orderBy === column && orderDirection === 'asc';
+    const newDirection = isAsc ? 'desc' : 'asc';
+    setOrderDirection(newDirection);
+    setOrderBy(column);
+
+    const sortedInstances = [...instances].sort((a, b) => {
+      // Handle null or undefined values
+      if (!a[column]) return 1;
+      if (!b[column]) return -1;
+
+      let compareA = a[column];
+      let compareB = b[column];
+
+      // Determine if the column contains numeric values
+      const numericColumns = ['cpucorecount', 'memory', 'storage', 'priceperhour'];
+      
+      if (numericColumns.includes(column)) {
+        // Convert to numbers for numeric comparison
+        compareA = Number(compareA);
+        compareB = Number(compareB);
+      } else {
+        compareA = String(compareA).toLowerCase();
+        compareB = String(compareB).toLowerCase();
+      }
+
+      // Sort based on direction
+      if (newDirection === 'asc') {
+        return compareA > compareB ? 1 : -1;
+      } else {
+        return compareA < compareB ? 1 : -1;
+      }
+    });
+    
+    setInstances(sortedInstances);
+  };
+
+  const SortableTableCell = ({ column, children }) => (
+    <TableCell
+      onClick={() => handleSort(column)}
+      sx={{
+        cursor: 'pointer',
+        userSelect: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1,
+        '&:hover': {
+          backgroundColor: 'rgba(0, 0, 0, 0.04)',
+        },
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {children}
+        {orderBy === column ? (
+          <span>
+            {orderDirection === 'asc' ? (
+              <ArrowUpwardIcon fontSize="small" color="primary" />
+            ) : (
+              <ArrowDownwardIcon fontSize="small" color="primary" />
+            )}
+          </span>
+        ) : (
+          <ArrowUpwardIcon fontSize="small" sx={{ opacity: 0.3 }} />
+        )}
+      </div>
+    </TableCell>
+  );
 
   useEffect(() => {
     const loadData = async () => {
@@ -72,14 +144,56 @@ export default function UserManagePage() {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Instance Name</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>System</TableCell>
-              <TableCell>CPU Cores</TableCell>
-              <TableCell>Memory (GB)</TableCell>
-              <TableCell>Storage (GB)</TableCell>
-              <TableCell>Price Tier</TableCell>
-              <TableCell>Price/Hour</TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('instancename')} style={{ cursor: 'pointer' }}></span>
+                <span>Instance Name</span>
+                <SortableTableCell column="instancename" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('type')} style={{ cursor: 'pointer' }}></span>
+                <span>Type</span>
+                <SortableTableCell column="type" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('systemtype')} style={{ cursor: 'pointer' }}></span>
+                <span>System</span>
+                <SortableTableCell column="systemtype" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('ipaddress')} style={{ cursor: 'pointer' }}></span>
+                <span>IP Address</span> 
+                <SortableTableCell column="ipaddress" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('allocated_username')} style={{ cursor: 'pointer' }}></span>
+                <span>Allocated Username</span>
+                <SortableTableCell column="allocated_username" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('allocateduserid')} style={{ cursor: 'pointer' }}></span>
+                <span>Allocated UserId</span>
+                <SortableTableCell column="allocateduserid" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('cpucorecount')} style={{ cursor: 'pointer' }}></span>  
+                <span>CPU Cores</span>
+                <SortableTableCell column="cpucorecount" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('memory')} style={{ cursor: 'pointer' }}></span>
+                <span>Memory (GB)</span>
+                <SortableTableCell column="memory" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('storage')} style={{ cursor: 'pointer' }}></span>
+                <span>Storage (GB)</span>
+                <SortableTableCell column="storage" />
+              </TableCell>
+              <TableCell>
+                <span onClick={() => handleSort('priceperhour')} style={{ cursor: 'pointer' }}></span>
+                <span>Price/Hour</span>
+                <SortableTableCell column="priceperhour" />
+              </TableCell>
               <TableCell align="center">Status</TableCell>
             </TableRow>
           </TableHead>
@@ -89,10 +203,12 @@ export default function UserManagePage() {
                 <TableCell>{instance.instancename}</TableCell>
                 <TableCell>{instance.type}</TableCell>
                 <TableCell>{instance.systemtype}</TableCell>
+                <TableCell>{instance.ipaddress}</TableCell>
+                <TableCell>{instance.allocated_username || 'N/A'}</TableCell>
+                <TableCell>{instance.allocateduserid || 'N/A'}</TableCell>
                 <TableCell>{instance.cpucorecount}</TableCell>
                 <TableCell>{instance.memory}</TableCell>
                 <TableCell>{instance.storage}</TableCell>
-                <TableCell>{instance.price_tier}</TableCell>
                 <TableCell>${instance.priceperhour}/hr</TableCell>
                 <TableCell align="center">
                   <FiberManualRecordIcon
