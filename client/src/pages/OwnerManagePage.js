@@ -23,9 +23,28 @@ import {
   Typography,
   Box,
   Tabs,
-  Tab
+  Tab,
+  LinearProgress,
+  Tooltip,
+  Snackbar,
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import { styled } from '@mui/material/styles';
+
+// Add this styled component for custom progress bar
+const CustomLinearProgress = styled(LinearProgress)(({ theme }) => ({
+  height: 10,
+  borderRadius: 5,
+  [`&.MuiLinearProgress-colorPrimary`]: {
+    backgroundColor: theme.palette.grey[200],
+  },
+  [`& .MuiLinearProgress-bar`]: {
+    borderRadius: 5,
+    backgroundColor: theme.palette.primary.main,
+  },
+}));
 
 export default function OwnerManagePage() {
   const { user } = useAuth();
@@ -74,6 +93,23 @@ export default function OwnerManagePage() {
   const [connectionDetailsDialog, setConnectionDetailsDialog] = useState(false);
   const [selectedConnectionDetails, setSelectedConnectionDetails] = useState(null);
 
+  const [controlEndpoints, setControlEndpoints] = useState({
+    startEndpoint: '',
+    stopEndpoint: ''
+  });
+
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' // or 'error'
+  });
+
+  // Add loading state for buttons
+  const [loadingInstances, setLoadingInstances] = useState({});
+
+  // Add a new state to track running instances
+  const [runningInstances, setRunningInstances] = useState({});
+
   const fetchData = useCallback(async (endpoint) => {
     try {
       if (!user || !user.token) {
@@ -109,11 +145,12 @@ export default function OwnerManagePage() {
       if (!user) return;
 
       try {
-        const [instancesData, typesData, tiersData, usersData] = await Promise.all([
+        const [instancesData, typesData, tiersData, usersData, endpointsData] = await Promise.all([
           fetchData('/api/owner/instances'),
           fetchData('/api/owner/instance-types'),
           fetchData('/api/owner/price-tiers'),
-          fetchData('/api/owner/users')
+          fetchData('/api/owner/users'),
+          fetchData('/api/owner/control-endpoints')
         ]);
 
         console.log('Fetched instances:', instancesData); // Debug log
@@ -121,6 +158,7 @@ export default function OwnerManagePage() {
         setInstanceTypes(typesData);
         setPriceTiers(tiersData);
         setUsers(usersData);
+        setControlEndpoints(endpointsData);
       } catch (error) {
         console.error('Error loading data:', error);
       }
@@ -362,6 +400,146 @@ export default function OwnerManagePage() {
     setSelectedConnectionDetails(null);
   };
 
+  const handleEndpointChange = (e) => {
+    const { name, value } = e.target;
+    setControlEndpoints(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  const handleEndpointSubmit = async () => {
+    try {
+      const response = await fetch(`http://${config.server_host}:${config.server_port}/api/owner/control-endpoints`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        },
+        body: JSON.stringify(controlEndpoints)
+      });
+
+      if (response.ok) {
+        setSnackbar({
+          open: true,
+          message: '🚀 Control endpoints saved successfully!',
+          severity: 'success'
+        });
+      } else {
+        throw new Error('Failed to save endpoints');
+      }
+    } catch (error) {
+      console.error('Error saving endpoints:', error);
+      setSnackbar({
+        open: true,
+        message: '❌ Failed to save endpoints. Please try again.',
+        severity: 'error'
+      });
+    }
+  };
+
+  // Add this helper function to fetch instances
+  const refreshInstances = async () => {
+    try {
+      const response = await fetch(
+        `http://${config.server_host}:${config.server_port}/api/owner/instances`,
+        {
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+          }
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setInstances(data);
+      }
+    } catch (error) {
+      console.error('Error refreshing instances:', error);
+    }
+  };
+
+  const handleStartInstance = async (instanceName) => {
+    try {
+      setLoadingInstances(prev => ({ ...prev, [instanceName]: true }));
+      
+      const response = await fetch(
+        `http://${config.server_host}:${config.server_port}/api/owner/instances/${instanceName}/start`, 
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        // Update local running state
+        setRunningInstances(prev => ({ ...prev, [instanceName]: true }));
+        
+        setSnackbar({
+          open: true,
+          message: '🚀 Instance started successfully!',
+          severity: 'success'
+        });
+      } else {
+        throw new Error('Failed to start instance');
+      }
+    } catch (error) {
+      console.error('Error starting instance:', error);
+      setSnackbar({
+        open: true,
+        message: '❌ Failed to start instance',
+        severity: 'error'
+      });
+    } finally {
+      setLoadingInstances(prev => ({ ...prev, [instanceName]: false }));
+    }
+  };
+
+  const handleStopInstance = async (instanceName) => {
+    try {
+      setLoadingInstances(prev => ({ ...prev, [instanceName]: true }));
+      
+      const response = await fetch(
+        `http://${config.server_host}:${config.server_port}/api/owner/instances/${instanceName}/stop`, 
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        // Update local running state
+        setRunningInstances(prev => ({ ...prev, [instanceName]: false }));
+        
+        setSnackbar({
+          open: true,
+          message: '🛑 Instance stopped successfully!',
+          severity: 'success'
+        });
+      } else {
+        throw new Error('Failed to stop instance');
+      }
+    } catch (error) {
+      console.error('Error stopping instance:', error);
+      setSnackbar({
+        open: true,
+        message: '❌ Failed to stop instance',
+        severity: 'error'
+      });
+    } finally {
+      setLoadingInstances(prev => ({ ...prev, [instanceName]: false }));
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ mb: 3 }}>
@@ -374,6 +552,7 @@ export default function OwnerManagePage() {
             <Tab label="Instance Types" value="instanceTypes" />
             <Tab label="Price Tiers" value="priceTiers" />
             <Tab label="Users" value="users" />
+            <Tab label="Control" value="control" />
           </Tabs>
         </Box>
       </Box>
@@ -402,41 +581,75 @@ export default function OwnerManagePage() {
                   <TableCell>Price Tier</TableCell>
                   <TableCell>Price/Hour</TableCell>
                   <TableCell align="center">Status</TableCell>
+                  <TableCell align="center">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {instances.map((instance) => (
-                  <TableRow key={instance.instanceid}>
-                    <TableCell>
-                      <Button
-                        sx={{ textTransform: 'none' }}
-                        onClick={() => handleOpenConnectionDetails({
-                          instancename: instance.instancename,
-                          ipaddress: instance.ipaddress,
-                          username: instance.username,  // From database
-                          password: instance.password   // From database
-                        })}
-                      >
-                        {instance.instancename}
-                      </Button>
-                    </TableCell>
-                    <TableCell>{instance.type}</TableCell>
-                    <TableCell>{instance.systemtype}</TableCell>
-                    <TableCell>{instance.cpucorecount}</TableCell>
-                    <TableCell>{instance.memory}</TableCell>
-                    <TableCell>{instance.storage}</TableCell>
-                    <TableCell>{instance.price_tier}</TableCell>
-                    <TableCell>${instance.priceperhour}/hr</TableCell>
-                    <TableCell align="center">
-                      <FiberManualRecordIcon
-                        sx={{
-                          color: instance.status ? 'success.main' : 'error.main',
-                          fontSize: '12px'
-                        }}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {instances.map((instance) => {
+                  console.log('Rendering instance:', instance.instancename, 'booted:', instance.booted);
+                  return (
+                    <TableRow key={instance.instanceid}>
+                      <TableCell>
+                        <Button
+                          sx={{ textTransform: 'none' }}
+                          onClick={() => handleOpenConnectionDetails(instance)}
+                        >
+                          {instance.instancename}
+                        </Button>
+                      </TableCell>
+                      <TableCell>{instance.type}</TableCell>
+                      <TableCell>{instance.systemtype}</TableCell>
+                      <TableCell>{instance.cpucorecount}</TableCell>
+                      <TableCell>{instance.memory}</TableCell>
+                      <TableCell>{instance.storage}</TableCell>
+                      <TableCell>{instance.price_tier}</TableCell>
+                      <TableCell>${instance.priceperhour}/hr</TableCell>
+                      <TableCell align="center">
+                        <FiberManualRecordIcon
+                          sx={{
+                            color: instance.status ? 'success.main' : 'error.main',
+                            fontSize: '12px'
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                          {!runningInstances[instance.instancename] ? (
+                            <Button
+                              variant="contained"
+                              color="success"
+                              size="small"
+                              onClick={() => handleStartInstance(instance.instancename)}
+                              disabled={loadingInstances[instance.instancename]}
+                              sx={{ minWidth: '80px' }}
+                            >
+                              {loadingInstances[instance.instancename] ? (
+                                <CircularProgress size={20} color="inherit" />
+                              ) : (
+                                "Start"
+                              )}
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="contained"
+                              color="error"
+                              size="small"
+                              onClick={() => handleStopInstance(instance.instancename)}
+                              disabled={loadingInstances[instance.instancename]}
+                              sx={{ minWidth: '80px' }}
+                            >
+                              {loadingInstances[instance.instancename] ? (
+                                <CircularProgress size={20} color="inherit" />
+                              ) : (
+                                "Stop"
+                              )}
+                            </Button>
+                          )}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
@@ -457,13 +670,14 @@ export default function OwnerManagePage() {
           <TableContainer component={Paper}>
             <Table>
               <TableHead>
-                <TableRow key="header-instance-types">
-                  <TableCell key="type-name">Type Name</TableCell>
-                  <TableCell key="system-type">System Type</TableCell>
-                  <TableCell key="cpu-cores">CPU Cores</TableCell>
-                  <TableCell key="memory">Memory (GB)</TableCell>
-                  <TableCell key="storage">Storage (GB)</TableCell>
-                  <TableCell key="price-tier">Price Tier</TableCell>
+                <TableRow>
+                  <TableCell>Type Name</TableCell>
+                  <TableCell>System Type</TableCell>
+                  <TableCell>CPU Cores</TableCell>
+                  <TableCell>Memory (GB)</TableCell>
+                  <TableCell>Storage (GB)</TableCell>
+                  <TableCell>Price Tier</TableCell>
+                  <TableCell>Availability</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -475,6 +689,33 @@ export default function OwnerManagePage() {
                     <TableCell>{type.memory}</TableCell>
                     <TableCell>{type.storage}</TableCell>
                     <TableCell>{type.price_tier}</TableCell>
+                    <TableCell>
+                      <Tooltip 
+                        title={`${type.assigned_count} of ${type.total_instances} instances assigned`}
+                        placement="top"
+                      >
+                        <Box sx={{ width: '100%', mr: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <Typography variant="body2" color="text.secondary" sx={{ minWidth: 100 }}>
+                              {type.assigned_count}/{type.total_instances}
+                            </Typography>
+                          </Box>
+                          <CustomLinearProgress
+                            variant="determinate"
+                            value={(type.assigned_count / type.total_instances) * 100}
+                            sx={{
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: (type.assigned_count / type.total_instances) > 0.8 
+                                  ? 'error.main' 
+                                  : (type.assigned_count / type.total_instances) > 0.5 
+                                    ? 'warning.main' 
+                                    : 'success.main'
+                              }
+                            }}
+                          />
+                        </Box>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -619,6 +860,49 @@ export default function OwnerManagePage() {
 
           {/* Existing Assign Instance Dialog remains here */}
         </>
+      )}
+
+      {/* Control Tab */}
+      {activeTab === 'control' && (
+        <Box sx={{ mt: 3, maxWidth: 600, mx: 'auto' }}>
+          <Typography variant="h6" gutterBottom>
+            Instance Control Endpoints
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Start Instance Endpoint"
+              name="startEndpoint"
+              value={controlEndpoints.startEndpoint}
+              onChange={handleEndpointChange}
+              variant="outlined"
+              placeholder="Enter the endpoint URL for starting instances"
+              helperText="Example: http://example.com/api/start-instance"
+            />
+            <TextField
+              fullWidth
+              label="Stop Instance Endpoint"
+              name="stopEndpoint"
+              value={controlEndpoints.stopEndpoint}
+              onChange={handleEndpointChange}
+              variant="outlined"
+              placeholder="Enter the endpoint URL for stopping instances"
+              helperText="Example: http://example.com/api/stop-instance"
+            />
+            <Button 
+              variant="contained" 
+              color="primary"
+              onClick={handleEndpointSubmit}
+              disabled={!controlEndpoints.startEndpoint || !controlEndpoints.stopEndpoint}
+              sx={{ mt: 2 }}
+            >
+              Save Endpoints
+            </Button>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
+            These endpoints will be used to control instance start/stop operations.
+          </Typography>
+        </Box>
       )}
 
       <Dialog open={openDialog} onClose={handleCloseDialog}>
@@ -874,6 +1158,28 @@ export default function OwnerManagePage() {
           <Button onClick={handleCloseConnectionDetails}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={4000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ 
+            width: '100%',
+            fontSize: '1rem',
+            '& .MuiAlert-icon': {
+              fontSize: '1.5rem'
+            }
+          }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }

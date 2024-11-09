@@ -18,7 +18,9 @@
     "react-heatmap-grid": "^0.9.1",
     "react-router-dom": "^6.6.1",
     "react-scripts": "5.0.1",
-    "recharts": "^2.2.0"
+    "recharts": "^2.2.0",
+    "vis-data": "^7.1.9",
+    "vis-timeline": "^7.7.3"
   },
   "scripts": {
     "start": "react-scripts start",

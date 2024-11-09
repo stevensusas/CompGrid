@@ -1,163 +1,371 @@
-import { useEffect, useState } from 'react';
-import { Container, Grid, Box, Typography } from '@mui/material';
-import { Bar, Line, Pie } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, LineElement, PointElement, ArcElement } from 'chart.js';
+import { useState, useEffect } from 'react';
+import { Container, Typography, Paper, CircularProgress, Box, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import StorageIcon from '@mui/icons-material/Storage';
+import TimerIcon from '@mui/icons-material/Timer';
+import config from '../config.json';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend);
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 export default function OwnerHomePage() {
-  const [usageByInstance, setUsageByInstance] = useState([]);
-  const [averageUsagePerUser, setAverageUsagePerUser] = useState([]);
-  const [dailyUsageTrend, setDailyUsageTrend] = useState([]);
-  const [usageBySystemType, setUsageBySystemType] = useState([]);
-  const [costByUser, setCostByUser] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [earnings, setEarnings] = useState(null);
+  const [runtime, setRuntime] = useState(null);
+  const [runtimeByType, setRuntimeByType] = useState(null);
+  const [costByType, setCostByType] = useState(null);
+  const [topUsers, setTopUsers] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Dummy data for each visualization
-    setUsageByInstance([
-      { instance_id: 1, total_usage_hours: 20 },
-      { instance_id: 2, total_usage_hours: 35 },
-      { instance_id: 3, total_usage_hours: 50 },
-      { instance_id: 4, total_usage_hours: 15 },
-      { instance_id: 5, total_usage_hours: 40 },
-    ]);
+    const fetchData = async () => {
+      try {
+        const [statsResponse, earningsResponse, runtimeResponse, runtimeTypeResponse, costTypeResponse, topUsersResponse] = await Promise.all([
+          fetch(`http://${config.server_host}:${config.server_port}/api/owner/cluster-stats`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          }),
+          fetch(`http://${config.server_host}:${config.server_port}/api/owner/earnings-stats`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          }),
+          fetch(`http://${config.server_host}:${config.server_port}/api/owner/runtime-stats`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          }),
+          fetch(`http://${config.server_host}:${config.server_port}/api/owner/runtime-by-type`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          }),
+          fetch(`http://${config.server_host}:${config.server_port}/api/owner/cost-by-type`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          }),
+          fetch(`http://${config.server_host}:${config.server_port}/api/owner/top-users`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          })
+        ]);
 
-    setAverageUsagePerUser([
-      { user_id: 1, avg_session_duration: 3 },
-      { user_id: 2, avg_session_duration: 4.5 },
-      { user_id: 3, avg_session_duration: 2 },
-      { user_id: 4, avg_session_duration: 5.2 },
-    ]);
+        const statsData = await statsResponse.json();
+        const earningsData = await earningsResponse.json();
+        const runtimeData = await runtimeResponse.json();
+        const runtimeTypeData = await runtimeTypeResponse.json();
+        const costTypeData = await costTypeResponse.json();
+        const topUsersData = await topUsersResponse.json();
 
-    setDailyUsageTrend([
-      { usage_date: '2024-10-01', total_usage_hours: 10 },
-      { usage_date: '2024-10-02', total_usage_hours: 20 },
-      { usage_date: '2024-10-03', total_usage_hours: 15 },
-      { usage_date: '2024-10-04', total_usage_hours: 30 },
-      { usage_date: '2024-10-05', total_usage_hours: 25 },
-    ]);
+        setStats(statsData);
+        setEarnings(earningsData);
+        setRuntime(runtimeData);
+        setRuntimeByType(runtimeTypeData);
+        setCostByType(costTypeData);
+        setTopUsers(topUsersData);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    setUsageBySystemType([
-      { system_type: 'Linux', total_usage_hours: 100 },
-      { system_type: 'Windows', total_usage_hours: 80 },
-      { system_type: 'MacOS', total_usage_hours: 50 },
-    ]);
-
-    setCostByUser([
-      { user_id: 1, total_cost: 150 },
-      { user_id: 2, total_cost: 200 },
-      { user_id: 3, total_cost: 120 },
-      { user_id: 4, total_cost: 300 },
-    ]);
+    fetchData();
   }, []);
 
-  // Chart data configurations
-  const usageByInstanceData = {
-    labels: usageByInstance.map(item => `Instance ${item.instance_id}`),
-    datasets: [
-      {
-        label: 'Total Usage Hours',
-        data: usageByInstance.map(item => item.total_usage_hours),
-        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-      },
-    ],
+  // Function to format hours into a readable string
+  const formatHours = (hours) => {
+    const days = Math.floor(hours / 24);
+    const remainingHours = Math.floor(hours % 24);
+    if (days > 0) {
+      return `${days}d ${remainingHours}h`;
+    }
+    return `${remainingHours}h`;
   };
 
-  const averageUsagePerUserData = {
-    labels: averageUsagePerUser.map(item => `User ${item.user_id}`),
-    datasets: [
-      {
-        label: 'Avg. Session Duration (Hours)',
-        data: averageUsagePerUser.map(item => item.avg_session_duration),
-        backgroundColor: 'rgba(153, 102, 255, 0.6)',
-      },
-    ],
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true
+      }
+    }
   };
 
-  const dailyUsageTrendData = {
-    labels: dailyUsageTrend.map(item => item.usage_date),
-    datasets: [
-      {
-        label: 'Total Usage Hours',
-        data: dailyUsageTrend.map(item => item.total_usage_hours),
-        borderColor: 'rgba(255, 99, 132, 1)',
-        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-        fill: true,
+  const runtimeChartOptions = {
+    ...chartOptions,
+    plugins: {
+      ...chartOptions.plugins,
+      title: {
+        display: true,
+        text: 'Instance Runtime by Type (Last 30 Days)'
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Hours'
+        }
       },
-    ],
+      x: {
+        title: {
+          display: true,
+          text: 'Date'
+        }
+      }
+    }
   };
 
-  const usageBySystemTypeData = {
-    labels: usageBySystemType.map(item => item.system_type),
-    datasets: [
-      {
-        label: 'Total Usage Hours',
-        data: usageBySystemType.map(item => item.total_usage_hours),
-        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56'],
+  const costChartOptions = {
+    ...chartOptions,
+    plugins: {
+      ...chartOptions.plugins,
+      title: {
+        display: true,
+        text: 'Cumulative Cost by Instance Type (Last 30 Days)'
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Cumulative Cost ($)'
+        }
       },
-    ],
-  };
-
-  const costByUserData = {
-    labels: costByUser.map(item => `User ${item.user_id}`),
-    datasets: [
-      {
-        label: 'Total Cost ($)',
-        data: costByUser.map(item => item.total_cost),
-        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-      },
-    ],
+      x: {
+        title: {
+          display: true,
+          text: 'Date'
+        }
+      }
+    }
   };
 
   return (
     <Container style={{ marginTop: '2rem' }}>
-      {/* Title Section */}
       <Typography variant="h2" align="center" gutterBottom style={{ fontWeight: 'bold', color: '#333' }}>
         Welcome to your cluster!
       </Typography>
       <Typography variant="subtitle1" align="center" gutterBottom style={{ color: '#666', marginBottom: '2rem' }}>
         Here is an overview of your usage and billing statistics.
       </Typography>
+      
+      {/* Stats Widgets Row */}
+      <Grid container spacing={3} style={{ marginBottom: '2rem' }}>
+        {/* Cluster Utilization Widget */}
+        <Grid item xs={12} md={4}>
+          <Paper elevation={3} style={{ padding: '2rem', height: '100%' }}>
+            {loading ? (
+              <Box display="flex" justifyContent="center">
+                <CircularProgress />
+              </Box>
+            ) : stats && (
+              <Box textAlign="center">
+                <StorageIcon color="primary" style={{ fontSize: 40, marginBottom: '1rem' }} />
+                <Typography variant="h4" gutterBottom color="primary">
+                  Cluster Utilization
+                </Typography>
+                <Typography variant="h2" color="secondary" style={{ marginBottom: '1rem' }}>
+                  {stats.assignmentPercentage}%
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  {stats.assignedInstances} out of {stats.totalInstances} instances assigned
+                </Typography>
+              </Box>
+            )}
+          </Paper>
+        </Grid>
 
+        {/* Total Earnings Widget */}
+        <Grid item xs={12} md={4}>
+          <Paper elevation={3} style={{ padding: '2rem', height: '100%' }}>
+            {loading ? (
+              <Box display="flex" justifyContent="center">
+                <CircularProgress />
+              </Box>
+            ) : earnings && (
+              <Box textAlign="center">
+                <AttachMoneyIcon color="primary" style={{ fontSize: 40, marginBottom: '1rem' }} />
+                <Typography variant="h4" gutterBottom color="primary">
+                  Total Earnings
+                </Typography>
+                <Typography variant="h2" color="secondary" style={{ marginBottom: '1rem' }}>
+                  ${earnings.totalEarnings}
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Total revenue from all instances
+                </Typography>
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+
+        {/* Total Runtime Widget */}
+        <Grid item xs={12} md={4}>
+          <Paper elevation={3} style={{ padding: '2rem', height: '100%' }}>
+            {loading ? (
+              <Box display="flex" justifyContent="center">
+                <CircularProgress />
+              </Box>
+            ) : runtime && (
+              <Box textAlign="center">
+                <TimerIcon color="primary" style={{ fontSize: 40, marginBottom: '1rem' }} />
+                <Typography variant="h4" gutterBottom color="primary">
+                  Total Runtime
+                </Typography>
+                <Typography variant="h2" color="secondary" style={{ marginBottom: '1rem' }}>
+                  {formatHours(runtime.totalHours)}
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Total runtime of all instances
+                </Typography>
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+
+      {/* Charts Row */}
+      <Grid container spacing={3} style={{ marginBottom: '2rem' }}>
+        {/* Runtime Chart */}
+        <Grid item xs={12}>
+          <Paper elevation={3} style={{ padding: '2rem' }}>
+            {loading ? (
+              <Box display="flex" justifyContent="center">
+                <CircularProgress />
+              </Box>
+            ) : runtimeByType && (
+              <Box style={{ height: '400px' }}>
+                <Line 
+                  options={runtimeChartOptions} 
+                  data={{
+                    ...runtimeByType,
+                    datasets: runtimeByType.datasets.map((dataset, index) => ({
+                      ...dataset,
+                      borderColor: [
+                        '#3f51b5',
+                        '#f50057',
+                        '#00bcd4',
+                        '#4caf50',
+                        '#ff9800',
+                        '#9c27b0'
+                      ][index % 6],
+                      borderWidth: 2,
+                      pointRadius: 3
+                    }))
+                  }} 
+                />
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+
+        {/* Cost Chart */}
+        <Grid item xs={12}>
+          <Paper elevation={3} style={{ padding: '2rem' }}>
+            {loading ? (
+              <Box display="flex" justifyContent="center">
+                <CircularProgress />
+              </Box>
+            ) : costByType && (
+              <Box style={{ height: '400px' }}>
+                <Line 
+                  options={costChartOptions} 
+                  data={{
+                    ...costByType,
+                    datasets: costByType.datasets.map((dataset, index) => ({
+                      ...dataset,
+                      borderColor: [
+                        '#3f51b5',
+                        '#f50057',
+                        '#00bcd4',
+                        '#4caf50',
+                        '#ff9800',
+                        '#9c27b0'
+                      ][index % 6],
+                      borderWidth: 2,
+                      pointRadius: 3
+                    }))
+                  }} 
+                />
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+
+      {/* Top Users Table Row */}
       <Grid container spacing={3}>
-        {/* Total Usage Time by Instance */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Total Usage Time by Instance</h3>
-            <Bar data={usageByInstanceData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
-          </Box>
-        </Grid>
-
-        {/* Average Usage Time per User */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Average Usage Time per User</h3>
-            <Bar data={averageUsagePerUserData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
-          </Box>
-        </Grid>
-
-        {/* Daily Usage Trend */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Daily Usage Trend</h3>
-            <Line data={dailyUsageTrendData} options={{ responsive: true, plugins: { legend: { position: 'top' } }, scales: { x: { title: { display: true, text: 'Date' } }, y: { title: { display: true, text: 'Usage Hours' } } } }} />
-          </Box>
-        </Grid>
-
-        {/* Cost Analysis by User */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Cost Analysis by User</h3>
-            <Bar data={costByUserData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
-          </Box>
-        </Grid>
-
-        {/* Usage Distribution by System Type */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Usage Distribution by System Type</h3>
-            <Pie data={usageBySystemTypeData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
-          </Box>
+        <Grid item xs={12}>
+          <Paper elevation={3} style={{ padding: '2rem' }}>
+            <Typography variant="h4" gutterBottom color="primary" align="center">
+              Top Users by Usage
+            </Typography>
+            {loading ? (
+              <Box display="flex" justifyContent="center">
+                <CircularProgress />
+              </Box>
+            ) : topUsers && (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Rank</TableCell>
+                      <TableCell>Username</TableCell>
+                      <TableCell align="right">Total Runtime</TableCell>
+                      <TableCell align="right">Total Cost</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {topUsers.map((user, index) => (
+                      <TableRow 
+                        key={user.userid}
+                        sx={{ 
+                          backgroundColor: index < 3 ? 'rgba(63, 81, 181, 0.08)' : 'inherit'
+                        }}
+                      >
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>{user.username}</TableCell>
+                        <TableCell align="right">{formatHours(user.total_hours)}</TableCell>
+                        <TableCell align="right">${Number(user.total_cost).toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
         </Grid>
       </Grid>
     </Container>
