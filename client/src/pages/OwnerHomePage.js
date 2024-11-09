@@ -3,7 +3,7 @@ import { Container, Typography, Paper, CircularProgress, Box, Grid, Table, Table
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import StorageIcon from '@mui/icons-material/Storage';
 import TimerIcon from '@mui/icons-material/Timer';
-import config from '../config.json';
+import config from '../config';
 import {
   Chart as ChartJS,
   CategoryScale,

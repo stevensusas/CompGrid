@@ -1,4 +1,4 @@
-FROM node:18
+FROM --platform=linux/amd64 node:18-bullseye-slim
 
 WORKDIR /app
 
@@ -8,6 +8,12 @@ RUN npm install
 
 COPY . .
 
+ENV HOST=0.0.0.0
+ENV PORT=9000
+
 EXPOSE 9000
 
-CMD ["npm", "start"] 
+RUN echo "#!/bin/sh\nnode app.js" > start.sh && \
+    chmod +x start.sh
+
+ENTRYPOINT ["/app/start.sh"] 

@@ -8,7 +8,6 @@ import OwnerRegisterPage from './pages/OwnerRegisterPage';
 import NavBar from './components/NavBar';
 import OwnerHomePage from './pages/OwnerHomePage';
 import OwnerManagePage from './pages/OwnerManagePage';
-import AlbumInfoPage from './pages/AlbumInfoPage';
 import UserLoginPage from './pages/UserLoginPage';
 import UserRegisterPage from './pages/UserRegisterPage';
 import UserHomePage from './pages/UserHomePage';

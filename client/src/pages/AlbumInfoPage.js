@@ -4,7 +4,7 @@ import { Container, Link, Stack, Table, TableBody, TableCell, TableContainer, Ta
 
 import SongCard from '../components/SongCard';
 import { formatDuration, formatReleaseDate } from '../helpers/formatter';
-const config = require('../config.json');
+const config = require('../config');
 
 export default function AlbumInfoPage() {
   const { album_id } = useParams();
