@@ -151,15 +151,13 @@ export default function UserManagePage() {
       }
 
       try {
-        console.log('Current user:', user);
-        
         const instancesData = await fetchData(`/api/user/instances/${user.userId}`);
         console.log('User instances:', instancesData);
 
         if (instancesData && Array.isArray(instancesData)) {
           const initialRunningState = {};
           instancesData.forEach(instance => {
-            initialRunningState[instance.instancename] = instance.status === 'running';
+            initialRunningState[instance.instancename] = instance.booted;
           });
           setRunningInstances(initialRunningState);
           setInstances(instancesData);
@@ -170,9 +168,13 @@ export default function UserManagePage() {
     };
 
     loadData();
+
+    const refreshInterval = setInterval(loadData, 30000); // Refresh every 30 seconds
+    return () => clearInterval(refreshInterval);
   }, [user, fetchData]);
 
   const handleOpenConnectionDetails = (instance) => {
+    console.log('Opening connection details for instance:', instance); // Debug log
     setSelectedConnectionDetails(instance);
     setConnectionDetailsDialog(true);
   };
@@ -364,13 +366,13 @@ export default function UserManagePage() {
         <DialogContent>
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle1" gutterBottom>
-              <strong>IP Address:</strong> {selectedConnectionDetails?.ipaddress}
+              <strong>IP Address:</strong> {selectedConnectionDetails?.ipaddress || 'Not available'}
             </Typography>
             <Typography variant="subtitle1" gutterBottom>
-              <strong>Username:</strong> {selectedConnectionDetails?.username}
+              <strong>Username:</strong> {selectedConnectionDetails?.username || 'Not available'}
             </Typography>
             <Typography variant="subtitle1" gutterBottom>
-              <strong>Password:</strong> {selectedConnectionDetails?.password}
+              <strong>Password:</strong> {selectedConnectionDetails?.password || 'Not available'}
             </Typography>
           </Box>
         </DialogContent>
