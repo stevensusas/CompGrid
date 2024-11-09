@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '../context/AuthContext';
 import config from '../config.json';
 import {
@@ -12,7 +13,13 @@ import {
   TableRow,
   Typography,
   Box,
-  Button,
+  Button, 
+  Modal, 
+  TextField, 
+  Select, 
+  MenuItem, 
+  FormControl,
+  InputLabel,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -28,8 +35,22 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 export default function UserManagePage() {
   const { user } = useAuth();
   const [instances, setInstances] = useState([]);
-  const [orderBy, setOrderBy] = useState('');
+  const [openRequestModal, setOpenRequestModal] = useState(false);
+  const [requestForm, setRequestForm] = useState({
+    instancetype: ''
+  });
+  const [availableTypes, setAvailableTypes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [orderBy, setOrderBy] = useState('instancename');
   const [orderDirection, setOrderDirection] = useState('asc');
+  
+
+  const instanceTypes = [
+    { name: 'ArchLinux Micro', system: 'ArchLinux', cpu: 1, memory: 1, storage: 15, tier: 'free' },
+    { name: 'ArchLinux Macro', system: 'ArchLinux', cpu: 1, memory: 2, storage: 15, tier: 'paid' },
+    { name: 'ArchLinux Mega', system: 'ArchLinux', cpu: 1, memory: 4, storage: 15, tier: 'paid' },
+    { name: 'ArchLinux MegaX', system: 'ArchLinux', cpu: 1, memory: 6, storage: 15, tier: 'paid' }
+  ];
   const [connectionDetailsDialog, setConnectionDetailsDialog] = useState(false);
   const [selectedConnectionDetails, setSelectedConnectionDetails] = useState(null);
   const [loadingInstances, setLoadingInstances] = useState({});
@@ -74,6 +95,85 @@ export default function UserManagePage() {
       return [];
     }
   }, [user]);
+
+  const fetchInstances = useCallback(async () => {
+    if (!user || !user.userId) {
+      console.log('No user ID available:', user);
+      return;
+    }
+
+    try {
+      const data = await fetchData(`/api/user/instances/${user.userId}`);
+      console.log('Fetched instances:', data);
+      
+      const userInstances = Array.isArray(data) ? data.filter(instance => 
+        instance.allocateduserid === user.userId
+      ) : [];
+      
+      console.log('User instances:', userInstances);
+      setInstances(userInstances);
+    } catch (error) {
+      console.error('Error loading instances:', error);
+      setInstances([]);
+    }
+  }, [user, fetchData]);
+
+  const fetchAvailableTypes = async () => {
+    try {
+      const data = await fetchData('/api/available-instance-types');
+      console.log('Available types:', data);
+      setAvailableTypes(data);
+    } catch (error) {
+      console.error('Error fetching instance types:', error);
+    }
+  };
+
+  const handleRequestOpen = () => setOpenRequestModal(true);
+  const handleRequestClose = () => {
+    setOpenRequestModal(false);
+    setRequestForm({
+      instancetype: '',
+      requestreason: ''
+    });
+  };
+
+  const handleRequestChange = (event) => {
+    setRequestForm({
+      ...requestForm,
+      [event.target.name]: event.target.value
+    });
+  };
+
+  const handleRequestSubmit = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    try {
+      const response = await fetch(`${config.server_host}/api/request-instance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          instancetype: requestForm.instancetype
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to request instance');
+      }
+
+      const data = await response.json();
+      console.log('Instance allocated:', data);
+      handleRequestClose();
+      fetchInstances(); 
+    } catch (error) {
+      console.error('Error requesting instance:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSort = (column) => {
     const isAsc = orderBy === column && orderDirection === 'asc';
@@ -142,6 +242,16 @@ export default function UserManagePage() {
       </div>
     </TableCell>
   );
+
+  useEffect(() => {
+    fetchInstances();
+  }, [fetchInstances]);
+
+  useEffect(() => {
+    if (openRequestModal) {
+      fetchAvailableTypes();
+    }
+  }, [openRequestModal]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -270,8 +380,99 @@ export default function UserManagePage() {
         <Typography variant="h4" component="h1" gutterBottom>
           My Instances
         </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleRequestOpen}
+        >
+          Request Instance
+        </Button>
       </Box>
 
+      <Modal
+        open={openRequestModal}
+        onClose={handleRequestClose}
+        aria-labelledby="request-instance-modal"
+      >
+        <Box
+          component="form"
+          onSubmit={handleRequestSubmit}
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 400,
+            bgcolor: 'background.paper',
+            boxShadow: 24,
+            p: 4,
+            borderRadius: 1,
+          }}
+        >
+          <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
+            Request New Instance Type
+          </Typography>
+
+          <FormControl fullWidth margin="normal" required>
+            <InputLabel id="instancetype-label">Instance Type</InputLabel>
+            <Select
+              labelId="instancetype-label"
+              name="instancetype"
+              value={requestForm.instancetype}
+              onChange={handleRequestChange}
+              label="Instance Type"
+            >
+              {instanceTypes.map((type) => {
+                // Find the matching available type from the backend
+                const availableType = availableTypes.find(at => at.instancetype === type.name);
+                
+                return (
+                  <MenuItem 
+                    key={type.name} 
+                    value={type.name}
+                    disabled={!availableType || availableType.available_instances === 0}
+                  >
+                    <Box>
+                      <Typography variant="subtitle1">
+                        {type.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {`${type.memory}GB RAM, ${type.storage}GB Storage, ${type.tier} tier`}
+                        {availableType && ` (${availableType.available_instances} available)`}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                );
+              })}
+            </Select>
+          </FormControl>
+
+          <TextField
+            fullWidth
+            label="Request Reason"
+            name="requestreason"
+            value={requestForm.requestreason}
+            onChange={handleRequestChange}
+            margin="normal"
+            required
+            multiline
+            rows={4}
+          />
+
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={handleRequestClose}>
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              variant="contained"
+              disabled={loading || !requestForm.instancetype}
+            >
+              {loading ? 'Requesting...' : 'Request Instance'}
+            </Button>
+          </Box>
+        </Box>
+      </Modal>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
