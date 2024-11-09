@@ -112,6 +112,9 @@ router.get('/instances', async (req, res) => {
         i.InstanceName as instancename,
         i.IPAddress as ipaddress,
         i.Booted as status,
+        i.Username as username,
+        i.AllocatedUserId as allocateduserid,
+        u.Username as allocated_username,
         it.InstanceType as type,
         it.SystemType as systemtype,
         it.CPUCoreCount as cpucorecount,
@@ -122,6 +125,7 @@ router.get('/instances', async (req, res) => {
       FROM Instance i
       LEFT JOIN InstanceType it ON i.InstanceTypeId = it.InstanceTypeId
       LEFT JOIN PriceTier pt ON it.PriceTierId = pt.PriceTierId
+      LEFT JOIN Users u ON i.AllocatedUserId = u.UserId
     `);
 
     // Transform the data to ensure proper casing and format
