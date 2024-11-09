@@ -1,165 +1,245 @@
-import { useEffect, useState } from 'react';
-import { Container, Grid, Box, Typography } from '@mui/material';
-import { Bar, Line, Pie } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, LineElement, PointElement, ArcElement } from 'chart.js';
+import { useState, useEffect } from 'react';
+import { Container, Typography, Paper, Box } from '@mui/material';
+import ComputerIcon from '@mui/icons-material/Computer';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import TimerIcon from '@mui/icons-material/Timer';
+import { useAuth } from '../context/AuthContext';
+import config from '../config.json';
+import CostChart from '../components/CostChart';
+import CumulativeCostChart from '../components/CumulativeCostChart';
+import UptimeChart from '../components/UptimeChart';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend);
+const formatUsageTime = (hours) => {
+  if (hours < 1) {
+    return `${Math.round(hours * 60)} mins`;
+  } else if (hours < 24) {
+    return `${Math.round(hours * 10) / 10} hrs`;
+  } else {
+    const days = Math.floor(hours / 24);
+    const remainingHours = Math.round((hours % 24) * 10) / 10;
+    return remainingHours > 0 ? 
+      `${days}d ${remainingHours}h` : 
+      `${days}d`;
+  }
+};
 
 export default function UserHomePage() {
-  const [usageByInstance, setUsageByInstance] = useState([]);
-  const [averageUsagePerUser, setAverageUsagePerUser] = useState([]);
-  const [dailyUsageTrend, setDailyUsageTrend] = useState([]);
-  const [usageBySystemType, setUsageBySystemType] = useState([]);
-  const [costByUser, setCostByUser] = useState([]);
+  const [instanceCount, setInstanceCount] = useState(0);
+  const [totalCost, setTotalCost] = useState(0);
+  const [totalHours, setTotalHours] = useState(0);
+  const [hourlyData, setHourlyData] = useState([]);
+  const [cumulativeCosts, setCumulativeCosts] = useState(null);
+  const [uptimeData, setUptimeData] = useState(null);
+  const { user } = useAuth();
 
   useEffect(() => {
-    // Dummy data for each visualization
-    setUsageByInstance([
-      { instance_id: 1, total_usage_hours: 20 },
-      { instance_id: 2, total_usage_hours: 35 },
-      { instance_id: 3, total_usage_hours: 50 },
-      { instance_id: 4, total_usage_hours: 15 },
-      { instance_id: 5, total_usage_hours: 40 },
-    ]);
+    const fetchInstanceCount = async () => {
+      try {
+        const userId = user.userId; // Assuming you store userId in localStorage
+        const response = await fetch(`http://${config.server_host}:${config.server_port}/api/user/count/${userId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}` // Assuming you store token in localStorage
+          }
+        });
+        const data = await response.json();
+        setInstanceCount(data.count);
+      } catch (error) {
+        console.error('Error fetching instance count:', error);
+      }
+    };
 
-    setAverageUsagePerUser([
-      { user_id: 1, avg_session_duration: 3 },
-      { user_id: 2, avg_session_duration: 4.5 },
-      { user_id: 3, avg_session_duration: 2 },
-      { user_id: 4, avg_session_duration: 5.2 },
-    ]);
-
-    setDailyUsageTrend([
-      { usage_date: '2024-10-01', total_usage_hours: 10 },
-      { usage_date: '2024-10-02', total_usage_hours: 20 },
-      { usage_date: '2024-10-03', total_usage_hours: 15 },
-      { usage_date: '2024-10-04', total_usage_hours: 30 },
-      { usage_date: '2024-10-05', total_usage_hours: 25 },
-    ]);
-
-    setUsageBySystemType([
-      { system_type: 'Linux', total_usage_hours: 100 },
-      { system_type: 'Windows', total_usage_hours: 80 },
-      { system_type: 'MacOS', total_usage_hours: 50 },
-    ]);
-
-    setCostByUser([
-      { user_id: 1, total_cost: 150 },
-      { user_id: 2, total_cost: 200 },
-      { user_id: 3, total_cost: 120 },
-      { user_id: 4, total_cost: 300 },
-    ]);
+    fetchInstanceCount();
   }, []);
 
-  // Chart data configurations
-  const usageByInstanceData = {
-    labels: usageByInstance.map(item => `Instance ${item.instance_id}`),
-    datasets: [
-      {
-        label: 'Total Usage Hours',
-        data: usageByInstance.map(item => item.total_usage_hours),
-        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-      },
-    ],
-  };
+  useEffect(() => {
+    const fetchTotalCost = async () => {
+      try {
+        const response = await fetch(`http://${config.server_host}:${config.server_port}/api/user/total-cost/${user.userId}`, {
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+          }
+        });
+        const data = await response.json();
+        setTotalCost(data.totalCost);
+      } catch (error) {
+        console.error('Error fetching total cost:', error);
+      }
+    };
 
-  const averageUsagePerUserData = {
-    labels: averageUsagePerUser.map(item => `User ${item.user_id}`),
-    datasets: [
-      {
-        label: 'Avg. Session Duration (Hours)',
-        data: averageUsagePerUser.map(item => item.avg_session_duration),
-        backgroundColor: 'rgba(153, 102, 255, 0.6)',
-      },
-    ],
-  };
+    if (user?.userId) {
+      fetchTotalCost();
+    }
+  }, [user]);
 
-  const dailyUsageTrendData = {
-    labels: dailyUsageTrend.map(item => item.usage_date),
-    datasets: [
-      {
-        label: 'Total Usage Hours',
-        data: dailyUsageTrend.map(item => item.total_usage_hours),
-        borderColor: 'rgba(255, 99, 132, 1)',
-        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-        fill: true,
-      },
-    ],
-  };
+  useEffect(() => {
+    const fetchTotalUsage = async () => {
+      try {
+        const response = await fetch(`http://${config.server_host}:${config.server_port}/api/user/total-usage/${user.userId}`, {
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+          }
+        });
+        const data = await response.json();
+        setTotalHours(data.totalHours);
+      } catch (error) {
+        console.error('Error fetching total usage:', error);
+      }
+    };
 
-  const usageBySystemTypeData = {
-    labels: usageBySystemType.map(item => item.system_type),
-    datasets: [
-      {
-        label: 'Total Usage Hours',
-        data: usageBySystemType.map(item => item.total_usage_hours),
-        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56'],
-      },
-    ],
-  };
+    if (user?.userId) {
+      fetchTotalUsage();
+    }
+  }, [user]);
 
-  const costByUserData = {
-    labels: costByUser.map(item => `User ${item.user_id}`),
-    datasets: [
-      {
-        label: 'Total Cost ($)',
-        data: costByUser.map(item => item.total_cost),
-        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-      },
-    ],
-  };
+  useEffect(() => {
+    const fetchHourlyCosts = async () => {
+      try {
+        const response = await fetch(`http://${config.server_host}:${config.server_port}/api/user/hourly-costs/${user.userId}`, {
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+          }
+        });
+        const data = await response.json();
+        setHourlyData(data.hourlyData);
+      } catch (error) {
+        console.error('Error fetching hourly costs:', error);
+      }
+    };
+
+    if (user?.userId) {
+      fetchHourlyCosts();
+      // Refresh data every 5 minutes
+      const interval = setInterval(fetchHourlyCosts, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const fetchCumulativeCosts = async () => {
+      try {
+        const response = await fetch(
+          `http://${config.server_host}:${config.server_port}/api/user/cumulative-costs/${user.userId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${user.token}`
+            }
+          }
+        );
+        const data = await response.json();
+        setCumulativeCosts(data);
+      } catch (error) {
+        console.error('Error fetching cumulative costs:', error);
+      }
+    };
+
+    if (user?.userId) {
+      fetchCumulativeCosts();
+      const interval = setInterval(fetchCumulativeCosts, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const fetchUptimeData = async () => {
+      try {
+        const response = await fetch(
+          `http://${config.server_host}:${config.server_port}/api/user/uptime/${user.userId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${user.token}`
+            }
+          }
+        );
+        const data = await response.json();
+        setUptimeData(data);
+      } catch (error) {
+        console.error('Error fetching uptime data:', error);
+      }
+    };
+
+    if (user?.userId) {
+      fetchUptimeData();
+      const interval = setInterval(fetchUptimeData, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   return (
     <Container style={{ marginTop: '2rem' }}>
-      {/* Title Section */}
       <Typography variant="h2" align="center" gutterBottom style={{ fontWeight: 'bold', color: '#333' }}>
         Welcome to your cluster!
       </Typography>
       <Typography variant="subtitle1" align="center" gutterBottom style={{ color: '#666', marginBottom: '2rem' }}>
         Here is an overview of your usage and billing statistics.
       </Typography>
-
-      <Grid container spacing={3}>
-        {/* Total Usage Time by Instance */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Total Usage Time by Instance</h3>
-            <Bar data={usageByInstanceData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
+      
+      <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {/* Existing Instance Count Widget */}
+        <Paper elevation={3} sx={{ p: 3, mb: 3, maxWidth: '300px' }}>
+          <Box display="flex" alignItems="center" justifyContent="center" flexDirection="column">
+            <ComputerIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+            <Typography variant="h4" gutterBottom>
+              {instanceCount}
+            </Typography>
+            <Typography variant="subtitle1" color="textSecondary">
+              Total Instances
+            </Typography>
           </Box>
-        </Grid>
+        </Paper>
 
-        {/* Average Usage Time per User */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Average Usage Time per User</h3>
-            <Bar data={averageUsagePerUserData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
+        {/* Total Cost Widget */}
+        <Paper elevation={3} sx={{ p: 3, mb: 3, maxWidth: '300px' }}>
+          <Box display="flex" alignItems="center" justifyContent="center" flexDirection="column">
+            <AttachMoneyIcon sx={{ fontSize: 48, color: 'success.main', mb: 2 }} />
+            <Typography variant="h4" gutterBottom>
+              ${totalCost}
+            </Typography>
+            <Typography variant="subtitle1" color="textSecondary">
+              Total Cost
+            </Typography>
           </Box>
-        </Grid>
+        </Paper>
 
-        {/* Daily Usage Trend */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Daily Usage Trend</h3>
-            <Line data={dailyUsageTrendData} options={{ responsive: true, plugins: { legend: { position: 'top' } }, scales: { x: { title: { display: true, text: 'Date' } }, y: { title: { display: true, text: 'Usage Hours' } } } }} />
+        {/* Updated Total Usage Widget */}
+        <Paper elevation={3} sx={{ p: 3, mb: 3, maxWidth: '300px' }}>
+          <Box display="flex" alignItems="center" justifyContent="center" flexDirection="column">
+            <TimerIcon sx={{ fontSize: 48, color: 'info.main', mb: 2 }} />
+            <Typography variant="h4" gutterBottom>
+              {formatUsageTime(parseFloat(totalHours))}
+            </Typography>
+            <Typography variant="subtitle1" color="textSecondary">
+              Total Usage Time
+            </Typography>
           </Box>
-        </Grid>
+        </Paper>
+      </Box>
 
-        {/* Cost Analysis by User */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Cost Analysis by User</h3>
-            <Bar data={costByUserData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
-          </Box>
-        </Grid>
+      <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
+        <Typography variant="h6" gutterBottom>
+          Cost Over Time
+        </Typography>
+        <Box sx={{ height: '500px' }}>
+          <CostChart data={hourlyData} />
+        </Box>
+      </Paper>
 
-        {/* Usage Distribution by System Type */}
-        <Grid item xs={12} sm={6}>
-          <Box style={{ backgroundColor: '#f5f5f5', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-            <h3>Usage Distribution by System Type</h3>
-            <Pie data={usageBySystemTypeData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
-          </Box>
-        </Grid>
-      </Grid>
+      <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
+        <Typography variant="h6" gutterBottom>
+          Cumulative Cost per Instance
+        </Typography>
+        <Box sx={{ height: '500px' }}>
+          <CumulativeCostChart data={cumulativeCosts} />
+        </Box>
+      </Paper>
+
+      <Paper elevation={3} sx={{ p: 4, mt: 4, mb: 4 }}>
+        <Typography variant="h6" gutterBottom>
+          Instance Uptime per Hour
+        </Typography>
+        <Box sx={{ height: '500px' }}>
+          <UptimeChart data={uptimeData} />
+        </Box>
+      </Paper>
     </Container>
   );
 }
