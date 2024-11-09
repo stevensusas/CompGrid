@@ -119,10 +119,18 @@ export default function UserManagePage() {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!user) return;
-
       try {
+        if (!user) {
+          console.log('No user found');
+          return;
+        }
+
+        console.log('Current user:', user);
+        console.log('User ID:', user.userId);
+        
+        // Filter instances for the current user
         const instancesData = await fetchData('/api/user/instances');
+        console.log('Fetched instances:', instancesData);
         setInstances(instancesData);
       } catch (error) {
         console.error('Error loading data:', error);
