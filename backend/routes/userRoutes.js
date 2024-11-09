@@ -177,75 +177,134 @@ router.post('/instances/request', authenticateToken, authenticateUser, async (re
   }
 });
 
-// Start instance by instance ID
-router.post('/instances/:id/start', authenticateToken, authenticateUser, async (req, res) => {
-  const instanceId = req.params.id;
 
+// Update the start endpoint
+router.post('/instances/:instanceName/start', async (req, res) => {
   try {
-    // Check if the instance exists and get its booted status
-    const result = await pool.query('SELECT Booted FROM Instance WHERE InstanceId = $1', [instanceId]);
+    const { instanceName } = req.params;
+    
+    // Check if instance is already running
+    const instanceCheck = await pool.query(
+      'SELECT booted FROM Instance WHERE instancename = $1',
+      [instanceName]
+    );
 
-    if (result.rowCount === 0) {
-      return res.status(404).send('Instance not found');
+    if (instanceCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
     }
 
-    const isBooted = result.rows[0].booted;
-    if (isBooted) {
-      return res.status(400).send('Instance is already started');
+    if (instanceCheck.rows[0].booted) {
+      return res.status(400).json({ message: 'Instance is already running' });
     }
 
-    // Call the Flask API to start the instance
-    const response = await axios.post('https://causal-tight-escargot.ngrok-free.app/start-machine', {
-      vm_name: instanceId  // Pass instanceId if it's used as the identifier in the Flask API
+    // 1. Get control endpoints from database
+    const endpointsResult = await pool.query(
+      'SELECT start_endpoint FROM ControlEndpoints WHERE id = 1'
+    );
+    
+    if (endpointsResult.rows.length === 0) {
+      return res.status(400).json({ message: 'Control endpoints not configured' });
+    }
+
+    const startEndpoint = endpointsResult.rows[0].start_endpoint;
+
+    // 2. Call the control endpoint
+    const controlResponse = await fetch(startEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ vm_name: instanceName })
     });
 
-    if (response.data.status === "success") {
-      // Update the instance to reflect that it is booted
-      await pool.query('UPDATE Instance SET Booted = TRUE WHERE InstanceId = $1', [instanceId]);
-      res.status(200).send('Instance started successfully');
-    } else {
-      res.status(500).send(`Error starting instance: ${response.data.message}`);
+    if (!controlResponse.ok) {
+      throw new Error('Failed to start instance through control endpoint');
     }
+
+    // 3. Update instance status in database
+    const result = await pool.query(`
+      UPDATE Instance 
+      SET booted = true 
+      WHERE instancename = $1 
+      RETURNING *
+    `, [instanceName]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
+    }
+
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error starting instance:', error);
-    res.status(500).send('Error starting instance');
+    res.status(500).json({ 
+      message: error.message || 'Error starting instance'
+    });
   }
 });
 
-// Stop instance by instance ID
-router.post('/instances/:id/stop', authenticateToken, authenticateUser, async (req, res) => {
-  const instanceId = req.params.id;
-  const stopType = req.body.stop_type || "stop";
-
+router.post('/instances/:instanceName/stop', async (req, res) => {
   try {
-    // Check if the instance exists and get its booted status
-    const result = await pool.query('SELECT Booted FROM Instance WHERE InstanceId = $1', [instanceId]);
+    const { instanceName } = req.params;
+    
+    // Check if instance is already stopped
+    const instanceCheck = await pool.query(
+      'SELECT booted FROM Instance WHERE instancename = $1',
+      [instanceName]
+    );
 
-    if (result.rowCount === 0) {
-      return res.status(404).send('Instance not found');
+    if (instanceCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
     }
 
-    const isBooted = result.rows[0].booted;
-    if (!isBooted) {
-      return res.status(400).send('Instance is already stopped');
+    if (!instanceCheck.rows[0].booted) {
+      return res.status(400).json({ message: 'Instance is already stopped' });
     }
 
-    // Call the Flask API to stop the instance
-    const response = await axios.post('https://causal-tight-escargot.ngrok-free.app/stop-machine', {
-      vm_name: instanceId, // Pass instanceId as the identifier for the Flask API
-      stop_type: stopType
+    // 1. Get control endpoints from database
+    const endpointsResult = await pool.query(
+      'SELECT stop_endpoint FROM ControlEndpoints WHERE id = 1'
+    );
+    
+    if (endpointsResult.rows.length === 0) {
+      return res.status(400).json({ message: 'Control endpoints not configured' });
+    }
+
+    const stopEndpoint = endpointsResult.rows[0].stop_endpoint;
+
+    // 2. Call the control endpoint
+    const controlResponse = await fetch(stopEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ vm_name: instanceName })
     });
 
-    if (response.data.status === "success") {
-      // Update the instance to reflect that it is no longer booted
-      await pool.query('UPDATE Instance SET Booted = FALSE WHERE InstanceId = $1', [instanceId]);
-      res.status(200).send('Instance stopped successfully');
-    } else {
-      res.status(500).send(`Error stopping instance: ${response.data.message}`);
+    if (!controlResponse.ok) {
+      throw new Error('Failed to stop instance through control endpoint');
     }
+
+    // 3. Update instance status in database to false (stopped)
+    const result = await pool.query(`
+      UPDATE Instance 
+      SET booted = false 
+      WHERE instancename = $1 
+      RETURNING *
+    `, [instanceName]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
+    }
+
+    // Log the update for debugging
+    console.log('Instance status updated:', result.rows[0]);
+
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error stopping instance:', error);
-    res.status(500).send('Error stopping instance');
+    res.status(500).json({ 
+      message: error.message || 'Error stopping instance'
+    });
   }
 });
 
