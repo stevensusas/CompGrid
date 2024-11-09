@@ -395,7 +395,7 @@ router.get('/instances/:userId', authenticateToken, async (req, res) => {
 // Request an instance of a specific type
 router.post('/request-instance', authenticateToken, authenticateUser, async (req, res) => {
   try {
-    const userId = req.user.userid;
+    const userId = req.user.id;
     const { instancetype } = req.body;
     
     console.log('Request received:', {
@@ -409,16 +409,16 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
     try {
       await client.query('BEGIN');
 
-      // Log the instance type query
       const typeResult = await client.query(`
         SELECT 
           it.instancetypeid,
-          it.free_count,
-          COUNT(i.instanceid) FILTER (WHERE i.allocateduserid IS NULL AND i.booted = false) as available_instances
+          it.instancetype,
+          COUNT(i.instanceid) FILTER (WHERE i.allocateduserid IS NULL AND i.booted = false) as available_count
         FROM public.instancetype it
-        LEFT JOIN public.instance i ON it.instancetypeid = i.instancetypeid
+        LEFT JOIN public.instance i ON it.instancetypeid = it.instancetypeid
         WHERE it.instancetype = $1
         GROUP BY it.instancetypeid
+        FOR UPDATE
       `, [instancetype]);
 
       console.log('Type result:', typeResult.rows);
@@ -440,40 +440,87 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         });
       }
 
-      // Log the instance selection query
+      // const instanceResult = await client.query(`
+      //   SELECT instanceid, instancename 
+      //   FROM public.instance 
+      //   WHERE instancetypeid = $1 
+      //   AND allocateduserid IS NULL 
+      //   AND booted = false
+      //   ORDER BY RANDOM() 
+      //   LIMIT 1
+      // `, [instanceType.instancetypeid]);
       const instanceResult = await client.query(`
-        SELECT instanceid, instancename 
+        SELECT instanceid, instancename
         FROM public.instance 
         WHERE instancetypeid = $1 
-        AND allocateduserid IS NULL 
-        AND booted = false
-        ORDER BY RANDOM() 
+          AND allocateduserid IS NULL 
+          AND booted = false
         LIMIT 1
+        FOR UPDATE SKIP LOCKED
       `, [instanceType.instancetypeid]);
 
       console.log('Selected instance:', instanceResult.rows);
 
       const instanceId = instanceResult.rows[0].instanceid;
 
-      // Log the allocation update
+      // const updateResult = await client.query(`
+      //   UPDATE public.instance 
+      //   SET allocateduserid = $1 
+      //   WHERE instanceid = $2
+      //   RETURNING *
+      // `, [userId, instanceId]);
       const updateResult = await client.query(`
-        UPDATE public.instance 
-        SET allocateduserid = $1 
-        WHERE instanceid = $2
-        RETURNING *
-      `, [userId, instanceId]);
+        WITH selected_instance AS (
+          SELECT instanceid 
+          FROM public.instance
+          WHERE instancetypeid = $1 
+            AND allocateduserid IS NULL 
+            AND booted = false
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE public.instance i
+        SET 
+          allocateduserid = $2,
+          booted = false
+        FROM selected_instance si
+        WHERE i.instanceid = si.instanceid
+        RETURNING 
+          i.instanceid,
+          i.instancename,
+          i.ipaddress,
+          i.username,
+          i.password,
+          i.booted
+      `, [instanceTypeId, userId]);
 
       console.log('Update result:', updateResult.rows);
 
       // Update the free_count
-      const freeCountUpdate = await client.query(`
-        UPDATE public.instancetype 
-        SET free_count = free_count - 1 
-        WHERE instancetypeid = $1
-        RETURNING *
-      `, [instanceType.instancetypeid]);
+      // const freeCountUpdate = await client.query(`
+      //   UPDATE public.instancetype 
+      //   SET 
+      //     free_count = free_count - 1,
+      //     available_instances = available_instances - 1
+      //   WHERE instancetypeid = $1 
+      //     AND free_count > 0
+      //     AND available_instances > 0
+      //   RETURNING free_count, available_instances
+      // `, [instanceType.instancetypeid]);
 
-      console.log('Free count update:', freeCountUpdate.rows);
+      // console.log('Free count update:', freeCountUpdate.rows);
+
+      await client.query(`
+        UPDATE public.instancetype 
+        SET free_count = (
+          SELECT COUNT(*) 
+          FROM public.instance 
+          WHERE instancetypeid = $1 
+            AND allocateduserid IS NULL 
+            AND booted = false
+        )
+        WHERE instancetypeid = $1
+      `, [instanceTypeId]);
 
       await client.query('COMMIT');
 

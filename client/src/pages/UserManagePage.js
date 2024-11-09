@@ -169,8 +169,40 @@ export default function UserManagePage() {
 
       const data = await response.json();
       console.log('Instance allocated:', data);
-      handleRequestClose();
-      fetchInstances(); 
+
+      if (data.instance) {
+        setInstances(prevInstances => {
+          const newInstance = {
+            ...data.instance,
+            allocateduserid: user.userId
+          };
+          console.log('Adding new instance:', newInstance);
+          return [...prevInstances, newInstance];
+        });
+  
+        setAvailableTypes(prevTypes => {
+          return prevTypes.map(type => {
+            if (type.instancetype === requestForm.instancetype) {
+              return {
+                ...type,
+                free_count: type.free_count - 1,
+                available_instances: type.available_instances - 1
+              };
+            }
+            return type;
+          });
+        });
+  
+        setSnackbar({
+          open: true,
+          message: '✅ Instance allocated successfully!',
+          severity: 'success'
+        });
+  
+        handleRequestClose();
+        await fetchAvailableTypes();
+    }
+
     } catch (error) {
       console.error('Error requesting instance:', error);
       setSnackbar({
