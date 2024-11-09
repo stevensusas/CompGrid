@@ -115,6 +115,10 @@ router.use(authenticateToken);
 
 router.get('/instances', async (req, res) => {
   try {
+    // Get the authenticated user's ID
+    const userId = req.user.userId;
+    console.log('Filtering instances for user ID:', userId);
+
     const result = await pool.query(`
       SELECT 
         i.InstanceId as instanceid,
@@ -135,7 +139,56 @@ router.get('/instances', async (req, res) => {
       LEFT JOIN InstanceType it ON i.InstanceTypeId = it.InstanceTypeId
       LEFT JOIN PriceTier pt ON it.PriceTierId = pt.PriceTierId
       LEFT JOIN Users u ON i.AllocatedUserId = u.UserId
-    `);
+      WHERE i.AllocatedUserId = $1  -- Filter by the authenticated user's ID
+    `, [userId]);
+
+    // Log the query results for debugging
+    console.log('User ID:', userId);
+    console.log('Number of instances found:', result.rows.length);
+    console.log('Query results:', result.rows);
+
+    const transformedRows = result.rows.map(row => ({
+      ...row,
+      status: Boolean(row.status),
+      cpucorecount: Number(row.cpucorecount),
+      storage: Number(row.storage),
+      memory: Number(row.memory),
+      priceperhour: Number(row.priceperhour)
+    }));
+
+    res.json(transformedRows);
+  } catch (error) {
+    console.error('Error details:', error);
+    res.status(500).json({ message: 'Error fetching instances' });
+  }
+});
+
+router.get('/:userId/instances', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    console.log('Fetching instances for userId:', userId);
+    const result = await pool.query(`
+      SELECT 
+        i.InstanceId as instanceid,
+        i.InstanceName as instancename,
+        i.IPAddress as ipaddress,
+        i.Booted as status,
+        i.Username as username,
+        i.AllocatedUserId as allocateduserid,
+        u.Username as allocated_username,
+        it.InstanceType as type,
+        it.SystemType as systemtype,
+        it.CPUCoreCount as cpucorecount,
+        it.Storage as storage,
+        it.Memory as memory,
+        pt.price_tier,
+        pt.PricePerHour as priceperhour
+      FROM Instance i
+      LEFT JOIN InstanceType it ON i.InstanceTypeId = it.InstanceTypeId
+      LEFT JOIN PriceTier pt ON it.PriceTierId = pt.PriceTierId
+      LEFT JOIN Users u ON i.AllocatedUserId = u.UserId
+      WHERE i.AllocatedUserId = $1
+    `, [userId]);
 
     // Transform the data to ensure proper casing and format
     const transformedRows = result.rows.map(row => ({

@@ -295,23 +295,20 @@ export default function UserManagePage() {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!user || !user.userId) {
-        console.log('No user ID available:', user);
-        return;
-      }
-
       try {
-        const instancesData = await fetchData(`/api/user/instances/${user.userId}`);
-        console.log('User instances:', instancesData);
-
-        if (instancesData && Array.isArray(instancesData)) {
-          const initialRunningState = {};
-          instancesData.forEach(instance => {
-            initialRunningState[instance.instancename] = instance.booted;
-          });
-          setRunningInstances(initialRunningState);
-          setInstances(instancesData);
+        if (!user) {
+          console.log('No user found');
+          return;
         }
+
+        console.log('Current user:', user);
+        console.log('User ID:', user.userId);
+        
+        // Filter instances for the current user
+        const instancesData = await fetchData('/api/user/instances');
+        console.log('Fetched instances:', instancesData);
+        setInstances(instancesData);
+
       } catch (error) {
         console.error('Error loading data:', error);
       }
