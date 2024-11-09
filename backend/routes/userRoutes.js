@@ -395,15 +395,21 @@ router.get('/instances/:userId', authenticateToken, async (req, res) => {
 // Request an instance of a specific type
 router.post('/request-instance', authenticateToken, authenticateUser, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { instancetype } = req.body;  // Now we only need the instance type name
+    const userId = req.user.userid;
+    const { instancetype } = req.body;
+    
+    console.log('Request received:', {
+      userId,
+      instancetype,
+      userObject: req.user
+    });
 
     // Begin transaction
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // First, get the instancetypeid and check if instances are available
+      // Log the instance type query
       const typeResult = await client.query(`
         SELECT 
           it.instancetypeid,
@@ -415,6 +421,8 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         GROUP BY it.instancetypeid
       `, [instancetype]);
 
+      console.log('Type result:', typeResult.rows);
+
       if (typeResult.rows.length === 0) {
         await client.query('ROLLBACK');
         return res.status(404).json({ 
@@ -423,6 +431,8 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
       }
 
       const instanceType = typeResult.rows[0];
+      console.log('Available instances:', instanceType.available_instances);
+
       if (instanceType.available_instances === 0) {
         await client.query('ROLLBACK');
         return res.status(400).json({ 
@@ -430,9 +440,9 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         });
       }
 
-      // Get a random available instance of this type
+      // Log the instance selection query
       const instanceResult = await client.query(`
-        SELECT instanceid 
+        SELECT instanceid, instancename 
         FROM public.instance 
         WHERE instancetypeid = $1 
         AND allocateduserid IS NULL 
@@ -441,25 +451,33 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         LIMIT 1
       `, [instanceType.instancetypeid]);
 
+      console.log('Selected instance:', instanceResult.rows);
+
       const instanceId = instanceResult.rows[0].instanceid;
 
-      // Allocate the instance to the user
-      await client.query(`
+      // Log the allocation update
+      const updateResult = await client.query(`
         UPDATE public.instance 
         SET allocateduserid = $1 
         WHERE instanceid = $2
+        RETURNING *
       `, [userId, instanceId]);
 
+      console.log('Update result:', updateResult.rows);
+
       // Update the free_count
-      await client.query(`
+      const freeCountUpdate = await client.query(`
         UPDATE public.instancetype 
         SET free_count = free_count - 1 
         WHERE instancetypeid = $1
+        RETURNING *
       `, [instanceType.instancetypeid]);
+
+      console.log('Free count update:', freeCountUpdate.rows);
 
       await client.query('COMMIT');
 
-      // Get the full instance details to return to the user
+      // Get the full instance details
       const result = await pool.query(`
         SELECT 
           i.instanceid,
@@ -479,12 +497,15 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         WHERE i.instanceid = $1
       `, [instanceId]);
 
+      console.log('Final result:', result.rows);
+
       res.json({
         message: 'Instance allocated successfully',
         instance: result.rows[0]
       });
 
     } catch (err) {
+      console.error('Transaction error:', err);
       await client.query('ROLLBACK');
       throw err;
     } finally {
