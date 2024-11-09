@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '../context/AuthContext';
-import config from '../config.json';
+import config from '../config';
 import {
   Container,
   Paper,

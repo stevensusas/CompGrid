@@ -444,9 +444,108 @@ router.get('/instances/:userId', authenticateToken, async (req, res) => {
   }
 });
 
+// Helper functions
+const checkInstanceTypeAvailability = async (client, instancetype) => {
+  const typeResult = await client.query(`
+    SELECT 
+      it.instancetypeid,
+      it.free_count,
+      COUNT(i.instanceid) FILTER (WHERE i.allocateduserid IS NULL AND i.booted = false) AS available_instances
+    FROM public.instancetype it
+    LEFT JOIN public.instance i ON it.instancetypeid = i.instancetypeid
+    WHERE it.instancetype = $1
+    GROUP BY it.instancetypeid
+  `, [instancetype]);
 
-// Request an instance of a specific type
+  if (typeResult.rows.length === 0) {
+    throw new Error('Instance type not found');
+  }
+
+  const instanceType = typeResult.rows[0];
+  if (instanceType.available_instances === 0) {
+    throw new Error('No available instances of this type');
+  }
+
+  return instanceType;
+};
+
+const findAvailableInstance = async (client, instancetypeid) => {
+  const instanceResult = await client.query(`
+    SELECT instanceid, instancename 
+    FROM public.instance 
+    WHERE instancetypeid = $1 
+    AND allocateduserid IS NULL 
+    AND booted = false
+    ORDER BY RANDOM() 
+    LIMIT 1
+  `, [instancetypeid]);
+
+  if (instanceResult.rows.length === 0) {
+    throw new Error('No unallocated instance available');
+  }
+
+  return instanceResult.rows[0];
+};
+
+const allocateInstanceToUser = async (client, userId, instanceId) => {
+  const updateResult = await client.query(`
+    UPDATE public.instance 
+    SET allocateduserid = $1 
+    WHERE instanceid = $2
+    RETURNING *
+  `, [userId, instanceId]);
+
+  if (updateResult.rowCount === 0) {
+    throw new Error('Instance allocation failed');
+  }
+
+  return updateResult.rows[0];
+};
+
+const updateFreeCount = async (client, instancetypeid) => {
+  const freeCountUpdate = await client.query(`
+    UPDATE public.instancetype 
+    SET free_count = free_count - 1 
+    WHERE instancetypeid = $1
+    RETURNING *
+  `, [instancetypeid]);
+
+  if (freeCountUpdate.rowCount === 0) {
+    throw new Error('Failed to update instance type free count');
+  }
+
+  return freeCountUpdate.rows[0];
+};
+
+const getInstanceDetails = async (client, instanceId) => {
+  const result = await client.query(`
+    SELECT 
+      i.instanceid,
+      i.instancename,
+      i.ipaddress,
+      i.booted AS status,
+      it.instancetype AS type,
+      it.systemtype,
+      it.cpucorecount,
+      it.memory,
+      it.storage,
+      pt.price_tier,
+      pt.priceperhour
+    FROM public.instance i
+    JOIN public.instancetype it ON i.instancetypeid = it.instancetypeid
+    JOIN public.pricetier pt ON it.pricetierid = pt.pricetierid
+    WHERE i.instanceid = $1
+  `, [instanceId]);
+
+  return result.rows[0];
+};
+
+// Main endpoint handler
 router.post('/request-instance', authenticateToken, authenticateUser, async (req, res) => {
+  const userId = req.user.userid;
+  const { instancetype } = req.body;
+  const client = await pool.connect();
+
   try {
     const userId = req.user.id;
     const { instancetype } = req.body;
@@ -457,10 +556,9 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
       userObject: req.user
     });
 
-    // Begin transaction
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    // Step 1: Check instance type and availability
+    const instanceType = await checkInstanceTypeAvailability(client, instancetype);
+    console.log('Available instances:', instanceType.available_instances);
 
       const typeResult = await client.query(`
         SELECT 
@@ -483,15 +581,12 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         });
       }
 
-      const instanceType = typeResult.rows[0];
-      console.log('Available instances:', instanceType.available_instances);
+    // Step 3: Allocate instance to user
+    await allocateInstanceToUser(client, userId, selectedInstance.instanceid);
 
-      if (instanceType.available_instances === 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ 
-          message: 'No available instances of this type' 
-        });
-      }
+    // Step 4: Update free count
+    await updateFreeCount(client, instanceType.instancetypeid);
+
 
       // const instanceResult = await client.query(`
       //   SELECT instanceid, instancename 
@@ -611,13 +706,23 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
     } finally {
       client.release();
     }
-
   } catch (error) {
-    console.error('Error allocating instance:', error);
-    res.status(500).json({ 
-      message: 'Error allocating instance',
+    await client.query('ROLLBACK');
+    console.error('Transaction error:', error);
+    
+    // Send appropriate error response based on error type
+    const errorMessage = error.message || 'Error allocating instance';
+    const statusCode = 
+      errorMessage.includes('not found') ? 404 :
+      errorMessage.includes('No available') ? 400 : 500;
+
+    res.status(statusCode).json({ 
+      message: errorMessage,
       error: error.message 
     });
+
+  } finally {
+    client.release();
   }
 });
 

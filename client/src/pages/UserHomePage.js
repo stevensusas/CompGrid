@@ -4,7 +4,7 @@ import ComputerIcon from '@mui/icons-material/Computer';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import TimerIcon from '@mui/icons-material/Timer';
 import { useAuth } from '../context/AuthContext';
-import config from '../config.json';
+import config from '../config';
 import CostChart from '../components/CostChart';
 import CumulativeCostChart from '../components/CumulativeCostChart';
 import UptimeChart from '../components/UptimeChart';

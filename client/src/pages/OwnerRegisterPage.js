@@ -9,7 +9,7 @@ import {
   Box,
   Alert
 } from '@mui/material';
-import config from '../config.json';
+import config from '../config';
 
 export default function OwnerRegisterPage() {
   const [formData, setFormData] = useState({

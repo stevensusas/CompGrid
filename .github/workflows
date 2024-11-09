@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  ECR_URL: 975050348274.dkr.ecr.us-west-2.amazonaws.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1 # Updated region
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push images
+        run: |
+          # Build and push frontend
+          cd client
+          docker buildx build --platform=linux/amd64 -t $ECR_URL/compgrid-frontend:latest . --push
+
+          # Build and push backend
+          cd ../backend
+          docker buildx build --platform=linux/amd64 -t $ECR_URL/compgrid-backend:latest . --push
+
+      - name: Restart deployments
+        run: |
+          aws eks update-kubeconfig --name compgrid-cluster --region us-east-1  # Updated with your cluster name
+          kubectl rollout restart deployment frontend
+          kubectl rollout restart deployment backend

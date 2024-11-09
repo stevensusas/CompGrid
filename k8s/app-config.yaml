@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  CORS_ORIGIN: "http://k8s-default-frontend-37bb0f2251-d124051f3779fd4d.elb.us-east-1.amazonaws.com"
+  DB_HOST: "terraform-20241025165823351500000001.cha8ies4obs2.us-east-1.rds.amazonaws.com"
+  DB_NAME: "postgres"
+  DB_PORT: "5432"
+  HOST: "0.0.0.0"
+  PORT: "9000"
+  REACT_APP_API_URL: "k8s-default-backends-458c8bfb6f-ba3a35c5b9f5a813.elb.us-east-1.amazonaws.com"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_URL: "redis://redis.default.svc.cluster.local:6379"
