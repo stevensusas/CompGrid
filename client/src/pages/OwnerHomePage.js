@@ -181,7 +181,8 @@ export default function OwnerHomePage() {
         Here is an overview of your usage and billing statistics.
       </Typography>
       
-      <Grid container spacing={3}>
+      {/* Stats Widgets Row */}
+      <Grid container spacing={3} style={{ marginBottom: '2rem' }}>
         {/* Cluster Utilization Widget */}
         <Grid item xs={12} md={4}>
           <Paper elevation={3} style={{ padding: '2rem', height: '100%' }}>
@@ -255,10 +256,10 @@ export default function OwnerHomePage() {
         </Grid>
       </Grid>
 
-      {/* Charts Section */}
-      <Grid container spacing={3} style={{ marginTop: '2rem' }}>
+      {/* Charts Row */}
+      <Grid container spacing={3} style={{ marginBottom: '2rem' }}>
         {/* Runtime Chart */}
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12}>
           <Paper elevation={3} style={{ padding: '2rem' }}>
             {loading ? (
               <Box display="flex" justifyContent="center">
@@ -291,7 +292,7 @@ export default function OwnerHomePage() {
         </Grid>
 
         {/* Cost Chart */}
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12}>
           <Paper elevation={3} style={{ padding: '2rem' }}>
             {loading ? (
               <Box display="flex" justifyContent="center">
@@ -324,8 +325,8 @@ export default function OwnerHomePage() {
         </Grid>
       </Grid>
 
-      {/* Top Users Table */}
-      <Grid container style={{ marginTop: '2rem' }}>
+      {/* Top Users Table Row */}
+      <Grid container spacing={3}>
         <Grid item xs={12}>
           <Paper elevation={3} style={{ padding: '2rem' }}>
             <Typography variant="h4" gutterBottom color="primary" align="center">
