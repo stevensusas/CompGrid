@@ -249,46 +249,42 @@ router.post('/instances/:id/stop', authenticateToken, authenticateUser, async (r
   }
 });
 
-// Deallocate instance by instance ID
-router.post('/instances/:id/deallocate', authenticateToken, authenticateUser, async (req, res) => {
-  const instanceId = req.params.id;
-  const userId = req.user.userId; // from JWT
-
+router.get('/instances/:userId', authenticateToken, async (req, res) => {
   try {
-    // Step 1: Check if the instance exists, is allocated to this user, and get its booted status
-    const instanceCheck = await pool.query(`
-      SELECT AllocatedUserId, Booted FROM Instance WHERE InstanceId = $1
-    `, [instanceId]);
+    const userId = req.params.userId;
+    
+    // Add logging to debug
+    console.log('Fetching instances for userId:', userId);
 
-    if (instanceCheck.rowCount === 0) {
-      return res.status(404).send('Instance not found');
-    }
+    const query = `
+      SELECT 
+        i.instanceid,
+        i.instancename,
+        i.ipaddress,
+        i.booted as status,
+        i.username as allocated_username,
+        i.allocateduserid,
+        it.instancetype as type,
+        it.systemtype,
+        it.cpucorecount,
+        it.storage,
+        it.memory,
+        pt.priceperhour
+      FROM instance i
+      LEFT JOIN instancetype it ON i.instancetypeid = it.instancetypeid
+      LEFT JOIN pricetier pt ON it.pricetierId = pt.pricetierId
+      WHERE i.allocateduserid = $1
+    `;
 
-    const { allocateduserid, booted } = instanceCheck.rows[0];
-
-    // Check if the instance is allocated to this user
-    if (allocateduserid !== userId) {
-      return res.status(403).send('You do not have permission to deallocate this instance');
-    }
-
-    // Step 2: Reset the machine if it is booted
-    if (booted) {
-      const resetResponse = await axios.post('http://localhost:5000/reset-machine', {
-        vm_name: instanceId  // Assuming `reset-machine` endpoint expects `vm_name` to be the instance ID
-      });
-
-      if (resetResponse.data.status !== "success") {
-        return res.status(500).send(`Error resetting instance: ${resetResponse.data.message}`);
-      }
-    }
-
-    // Step 3: Deallocate the instance by setting AllocatedUserId to NULL and Booted to FALSE
-    await pool.query('UPDATE Instance SET AllocatedUserId = NULL, Booted = FALSE WHERE InstanceId = $1', [instanceId]);
-
-    res.status(200).send('Instance deallocated and reset successfully');
+    const result = await pool.query(query, [userId]);
+    
+    // Add logging to debug
+    console.log('Query result:', result.rows);
+    
+    res.json(result.rows);
   } catch (error) {
-    console.error('Error deallocating instance:', error);
-    res.status(500).send('Error deallocating instance');
+    console.error('Error fetching instances:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

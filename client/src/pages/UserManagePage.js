@@ -29,13 +29,22 @@ export default function UserManagePage() {
         throw new Error('No authentication found');
       }
 
-      const response = await fetch(`http://${config.server_host}:${config.server_port}${endpoint}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.token}`
+      if (endpoint.includes('undefined')) {
+        throw new Error('Invalid endpoint: user ID is undefined');
+      }
+
+      console.log('Fetching from endpoint:', endpoint);
+
+      const response = await fetch(
+        `http://${config.server_host}:${config.server_port}${endpoint}`, 
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          }
         }
-      });
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -119,11 +128,24 @@ export default function UserManagePage() {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!user) return;
+      if (!user || !user.userId) {
+        console.log('No user ID available:', user);
+        return;
+      }
 
       try {
-        const instancesData = await fetchData('/api/user/instances');
-        setInstances(instancesData);
+        console.log('Current user:', user);
+        
+        const instancesData = await fetchData(`/api/user/instances/${user.userId}`);
+        console.log('User instances:', instancesData);
+
+        if (instancesData && Array.isArray(instancesData)) {
+          const initialRunningState = {};
+          instancesData.forEach(instance => {
+            initialRunningState[instance.instancename] = instance.status === 'running';
+          });
+          setInstances(instancesData);
+        }
       } catch (error) {
         console.error('Error loading data:', error);
       }
