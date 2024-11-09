@@ -673,6 +673,272 @@ router.get('/check-instance-availability', async (req, res) => {
   }
 });
 
+// Add this new endpoint before module.exports
+router.get('/cluster-stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        COUNT(*) as total_instances,
+        COUNT(CASE WHEN allocateduserid IS NOT NULL THEN 1 END) as assigned_instances
+      FROM Instance
+    `);
+    
+    const stats = result.rows[0];
+    const assignmentPercentage = stats.total_instances > 0 
+      ? (stats.assigned_instances / stats.total_instances * 100).toFixed(1)
+      : 0;
+
+    res.json({
+      totalInstances: parseInt(stats.total_instances),
+      assignedInstances: parseInt(stats.assigned_instances),
+      assignmentPercentage: parseFloat(assignmentPercentage)
+    });
+  } catch (error) {
+    console.error('Error fetching cluster stats:', error);
+    res.status(500).json({ message: 'Error fetching cluster stats' });
+  }
+});
+
+// Add this new endpoint
+router.get('/earnings-stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        COALESCE(SUM(
+          pt.priceperhour * 
+          EXTRACT(EPOCH FROM (ul.endtime - ul.starttime))/3600
+        ), 0) as total_earnings
+      FROM UsageLogs ul
+      JOIN Instance i ON ul.instanceid = i.instanceid
+      JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+      JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
+      WHERE ul.endtime IS NOT NULL
+      
+      UNION ALL
+      
+      SELECT 
+        COALESCE(SUM(
+          pt.priceperhour * 
+          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ul.starttime))/3600
+        ), 0) as total_earnings
+      FROM UsageLogs ul
+      JOIN Instance i ON ul.instanceid = i.instanceid
+      JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+      JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
+      WHERE ul.endtime IS NULL
+    `);
+    
+    // Sum up both completed and ongoing usage
+    const totalEarnings = result.rows.reduce((sum, row) => sum + parseFloat(row.total_earnings), 0);
+    
+    res.json({
+      totalEarnings: totalEarnings.toFixed(2)
+    });
+  } catch (error) {
+    console.error('Error fetching earnings stats:', error);
+    res.status(500).json({ message: 'Error fetching earnings stats' });
+  }
+});
+
+// Add this new endpoint
+router.get('/runtime-stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        COALESCE(SUM(
+          EXTRACT(EPOCH FROM (ul.endtime - ul.starttime))/3600
+        ), 0) as completed_hours
+      FROM UsageLogs ul
+      WHERE ul.endtime IS NOT NULL
+      
+      UNION ALL
+      
+      SELECT 
+        COALESCE(SUM(
+          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ul.starttime))/3600
+        ), 0) as active_hours
+      FROM UsageLogs ul
+      WHERE ul.endtime IS NULL
+    `);
+    
+    // Sum up both completed and ongoing usage
+    const totalHours = result.rows.reduce((sum, row) => sum + parseFloat(row.completed_hours || 0), 0);
+    
+    res.json({
+      totalHours: totalHours.toFixed(1)
+    });
+  } catch (error) {
+    console.error('Error fetching runtime stats:', error);
+    res.status(500).json({ message: 'Error fetching runtime stats' });
+  }
+});
+
+router.get('/runtime-by-type', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        it.instancetype,
+        DATE_TRUNC('day', ul.starttime) as date,
+        COALESCE(SUM(
+          CASE 
+            WHEN ul.endtime IS NOT NULL THEN
+              EXTRACT(EPOCH FROM (ul.endtime - ul.starttime))/3600
+            ELSE
+              EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ul.starttime))/3600
+          END
+        ), 0) as hours
+      FROM UsageLogs ul
+      JOIN Instance i ON ul.instanceid = i.instanceid
+      JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+      WHERE ul.starttime >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY it.instancetype, DATE_TRUNC('day', ul.starttime)
+      ORDER BY date ASC
+    `);
+
+    // Transform data into format needed for chart
+    const instanceTypes = [...new Set(result.rows.map(row => row.instancetype))];
+    const dates = [...new Set(result.rows.map(row => row.date))].sort();
+
+    const datasets = instanceTypes.map(type => {
+      const data = dates.map(date => {
+        const match = result.rows.find(row => 
+          row.instancetype === type && row.date.toISOString().split('T')[0] === date.toISOString().split('T')[0]
+        );
+        // Convert to number and handle null/undefined cases
+        return match ? Number(match.hours || 0).toFixed(1) : 0;
+      });
+
+      return {
+        label: type,
+        data: data,
+        fill: false,
+        tension: 0.4
+      };
+    });
+
+    res.json({
+      labels: dates.map(d => d.toISOString().split('T')[0]),
+      datasets: datasets
+    });
+  } catch (error) {
+    console.error('Error fetching runtime by type:', error);
+    res.status(500).json({ message: 'Error fetching runtime data' });
+  }
+});
+
+router.get('/cost-by-type', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      WITH daily_costs AS (
+        SELECT 
+          it.instancetype,
+          DATE_TRUNC('day', ul.starttime) as date,
+          COALESCE(SUM(
+            pt.priceperhour * 
+            CASE 
+              WHEN ul.endtime IS NOT NULL THEN
+                EXTRACT(EPOCH FROM (ul.endtime - ul.starttime))/3600
+              ELSE
+                EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ul.starttime))/3600
+            END
+          ), 0) as daily_cost
+        FROM UsageLogs ul
+        JOIN Instance i ON ul.instanceid = i.instanceid
+        JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+        JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
+        WHERE ul.starttime >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY it.instancetype, DATE_TRUNC('day', ul.starttime)
+      )
+      SELECT 
+        instancetype,
+        date,
+        SUM(daily_cost) OVER (
+          PARTITION BY instancetype 
+          ORDER BY date
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) as cumulative_cost
+      FROM daily_costs
+      ORDER BY date ASC
+    `);
+
+    // Transform data into format needed for chart
+    const instanceTypes = [...new Set(result.rows.map(row => row.instancetype))];
+    const dates = [...new Set(result.rows.map(row => row.date))].sort();
+
+    const datasets = instanceTypes.map(type => {
+      const data = dates.map(date => {
+        const match = result.rows.find(row => 
+          row.instancetype === type && row.date.toISOString().split('T')[0] === date.toISOString().split('T')[0]
+        );
+        return match ? Number(match.cumulative_cost || 0).toFixed(2) : 0;
+      });
+
+      return {
+        label: type,
+        data: data,
+        fill: false,
+        tension: 0.4
+      };
+    });
+
+    res.json({
+      labels: dates.map(d => d.toISOString().split('T')[0]),
+      datasets: datasets
+    });
+  } catch (error) {
+    console.error('Error fetching cost by type:', error);
+    res.status(500).json({ message: 'Error fetching cost data' });
+  }
+});
+
+router.get('/top-users', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      WITH user_stats AS (
+        SELECT 
+          u.userid,
+          u.username,
+          COALESCE(SUM(
+            CASE 
+              WHEN ul.endtime IS NOT NULL THEN
+                EXTRACT(EPOCH FROM (ul.endtime - ul.starttime))/3600
+              ELSE
+                EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ul.starttime))/3600
+            END
+          ), 0) as total_hours,
+          COALESCE(SUM(
+            pt.priceperhour * 
+            CASE 
+              WHEN ul.endtime IS NOT NULL THEN
+                EXTRACT(EPOCH FROM (ul.endtime - ul.starttime))/3600
+              ELSE
+                EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ul.starttime))/3600
+            END
+          ), 0) as total_cost
+        FROM Users u
+        LEFT JOIN Instance i ON u.userid = i.allocateduserid
+        LEFT JOIN UsageLogs ul ON i.instanceid = ul.instanceid
+        LEFT JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+        LEFT JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
+        WHERE u.role = 'user'
+        GROUP BY u.userid, u.username
+      )
+      SELECT 
+        userid,
+        username,
+        ROUND(total_hours::numeric, 1) as total_hours,
+        ROUND(total_cost::numeric, 2) as total_cost
+      FROM user_stats
+      ORDER BY total_cost DESC
+      LIMIT 10
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching top users:', error);
+    res.status(500).json({ message: 'Error fetching top users' });
+  }
+});
 
 module.exports = router;
 
