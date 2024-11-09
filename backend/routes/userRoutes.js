@@ -4,6 +4,15 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const pool = require('../db');
+const { createClient } = require('redis');
+
+// Redis client setup
+const redisClient = createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379'
+});
+
+redisClient.on('error', err => console.log('Redis Client Error', err));
+redisClient.connect();
 
 const router = express.Router();
 
@@ -233,6 +242,9 @@ router.post('/instances/:instanceName/start', async (req, res) => {
       return res.status(404).json({ message: 'Instance not found' });
     }
 
+    const startTime = new Date().toISOString();
+    await redisClient.set(`instance:${instanceName}:startTime`, startTime);
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error starting instance:', error);
@@ -241,7 +253,7 @@ router.post('/instances/:instanceName/start', async (req, res) => {
     });
   }
   
-  
+
   
 });
 
@@ -301,6 +313,34 @@ router.post('/instances/:instanceName/stop', async (req, res) => {
 
     // Log the update for debugging
     console.log('Instance status updated:', result.rows[0]);
+
+    const startTime = await redisClient.get(`instance:${instanceName}:startTime`);
+    if (!startTime) {
+      console.warn(`No start time found for instance ${instanceName}`);
+    }
+
+    const endTime = new Date().toISOString();
+    // If we have a start time, log the usage
+    if (startTime) {
+      // Get the instance and user details
+      const instanceDetails = await pool.query(
+        'SELECT InstanceId, AllocatedUserId FROM Instance WHERE InstanceName = $1',
+        [instanceName]
+      );
+
+      if (instanceDetails.rows.length > 0) {
+        const { instanceid, allocateduserid } = instanceDetails.rows[0];
+        
+        // Insert into UsageLogs
+        await pool.query(
+          'INSERT INTO UsageLogs (UserId, InstanceId, StartTime, EndTime) VALUES ($1, $2, $3, $4)',
+          [allocateduserid, instanceid, startTime, endTime]
+        );
+
+        // Clean up Redis
+        await redisClient.del(`instance:${instanceName}:startTime`);
+      }
+    }
 
     res.json(result.rows[0]);
   } catch (error) {
