@@ -240,6 +240,9 @@ router.post('/instances/:instanceName/start', async (req, res) => {
       message: error.message || 'Error starting instance'
     });
   }
+  
+  
+  
 });
 
 router.post('/instances/:instanceName/stop', async (req, res) => {
