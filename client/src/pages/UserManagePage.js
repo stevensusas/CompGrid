@@ -19,7 +19,15 @@ import {
   Select, 
   MenuItem, 
   FormControl,
-  InputLabel
+  InputLabel,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
@@ -37,13 +45,22 @@ export default function UserManagePage() {
   const [orderBy, setOrderBy] = useState('instancename');
   const [orderDirection, setOrderDirection] = useState('asc');
   
-  // Predefined instance types
+
   const instanceTypes = [
     { name: 'ArchLinux Micro', system: 'ArchLinux', cpu: 1, memory: 1, storage: 15, tier: 'free' },
     { name: 'ArchLinux Macro', system: 'ArchLinux', cpu: 1, memory: 2, storage: 15, tier: 'paid' },
     { name: 'ArchLinux Mega', system: 'ArchLinux', cpu: 1, memory: 4, storage: 15, tier: 'paid' },
     { name: 'ArchLinux MegaX', system: 'ArchLinux', cpu: 1, memory: 6, storage: 15, tier: 'paid' }
   ];
+  const [connectionDetailsDialog, setConnectionDetailsDialog] = useState(false);
+  const [selectedConnectionDetails, setSelectedConnectionDetails] = useState(null);
+  const [loadingInstances, setLoadingInstances] = useState({});
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
+  const [runningInstances, setRunningInstances] = useState({});
 
   const fetchData = useCallback(async (endpoint) => {
     try {
@@ -245,16 +262,15 @@ export default function UserManagePage() {
       }
 
       try {
-        console.log('Current user:', user);
-        
         const instancesData = await fetchData(`/api/user/instances/${user.userId}`);
         console.log('User instances:', instancesData);
 
         if (instancesData && Array.isArray(instancesData)) {
           const initialRunningState = {};
           instancesData.forEach(instance => {
-            initialRunningState[instance.instancename] = instance.status === 'running';
+            initialRunningState[instance.instancename] = instance.booted;
           });
+          setRunningInstances(initialRunningState);
           setInstances(instancesData);
         }
       } catch (error) {
@@ -263,7 +279,101 @@ export default function UserManagePage() {
     };
 
     loadData();
+
+    const refreshInterval = setInterval(loadData, 30000); // Refresh every 30 seconds
+    return () => clearInterval(refreshInterval);
   }, [user, fetchData]);
+
+  const handleOpenConnectionDetails = (instance) => {
+    console.log('Opening connection details for instance:', instance); // Debug log
+    setSelectedConnectionDetails(instance);
+    setConnectionDetailsDialog(true);
+  };
+
+  const handleCloseConnectionDetails = () => {
+    setConnectionDetailsDialog(false);
+    setSelectedConnectionDetails(null);
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  const handleStartInstance = async (instanceName, instanceId) => {
+    try {
+      setLoadingInstances(prev => ({ ...prev, [instanceName]: true }));
+      
+      const response = await fetch(
+        `http://${config.server_host}:${config.server_port}/api/user/instances/${instanceName}/start`, 
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        setRunningInstances(prev => ({ ...prev, [instanceName]: true }));
+        
+        setSnackbar({
+          open: true,
+          message: '🚀 Instance started successfully!',
+          severity: 'success'
+        });
+      } else {
+        throw new Error('Failed to start instance');
+      }
+    } catch (error) {
+      console.error('Error starting instance:', error);
+      setSnackbar({
+        open: true,
+        message: '❌ Failed to start instance',
+        severity: 'error'
+      });
+    } finally {
+      setLoadingInstances(prev => ({ ...prev, [instanceName]: false }));
+    }
+  };
+
+  const handleStopInstance = async (instanceName, instanceId) => {
+    try {
+      setLoadingInstances(prev => ({ ...prev, [instanceName]: true }));
+      
+      const response = await fetch(
+        `http://${config.server_host}:${config.server_port}/api/user/instances/${instanceName}/stop`, 
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        setRunningInstances(prev => ({ ...prev, [instanceName]: false }));
+        
+        setSnackbar({
+          open: true,
+          message: '🛑 Instance stopped successfully!',
+          severity: 'success'
+        });
+      } else {
+        throw new Error('Failed to stop instance');
+      }
+    } catch (error) {
+      console.error('Error stopping instance:', error);
+      setSnackbar({
+        open: true,
+        message: '❌ Failed to stop instance',
+        severity: 'error'
+      });
+    } finally {
+      setLoadingInstances(prev => ({ ...prev, [instanceName]: false }));
+    }
+  };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -368,68 +478,30 @@ export default function UserManagePage() {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>
-                <span onClick={() => handleSort('instancename')} style={{ cursor: 'pointer' }}></span>
-                <span>Instance Name</span>
-                <SortableTableCell column="instancename" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('type')} style={{ cursor: 'pointer' }}></span>
-                <span>Type</span>
-                <SortableTableCell column="type" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('systemtype')} style={{ cursor: 'pointer' }}></span>
-                <span>System</span>
-                <SortableTableCell column="systemtype" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('ipaddress')} style={{ cursor: 'pointer' }}></span>
-                <span>IP Address</span> 
-                <SortableTableCell column="ipaddress" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('allocated_username')} style={{ cursor: 'pointer' }}></span>
-                <span>Allocated Username</span>
-                <SortableTableCell column="allocated_username" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('allocateduserid')} style={{ cursor: 'pointer' }}></span>
-                <span>Allocated UserId</span>
-                <SortableTableCell column="allocateduserid" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('cpucorecount')} style={{ cursor: 'pointer' }}></span>  
-                <span>CPU Cores</span>
-                <SortableTableCell column="cpucorecount" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('memory')} style={{ cursor: 'pointer' }}></span>
-                <span>Memory (GB)</span>
-                <SortableTableCell column="memory" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('storage')} style={{ cursor: 'pointer' }}></span>
-                <span>Storage (GB)</span>
-                <SortableTableCell column="storage" />
-              </TableCell>
-              <TableCell>
-                <span onClick={() => handleSort('priceperhour')} style={{ cursor: 'pointer' }}></span>
-                <span>Price/Hour</span>
-                <SortableTableCell column="priceperhour" />
-              </TableCell>
+              <TableCell>Instance Name</TableCell>
+              <TableCell>Type</TableCell>
+              <TableCell>System</TableCell>
+              <TableCell>CPU Cores</TableCell>
+              <TableCell>Memory (GB)</TableCell>
+              <TableCell>Storage (GB)</TableCell>
+              <TableCell>Price/Hour</TableCell>
               <TableCell align="center">Status</TableCell>
+              <TableCell align="center">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {instances.map((instance) => (
               <TableRow key={instance.instanceid}>
-                <TableCell>{instance.instancename}</TableCell>
+                <TableCell>
+                  <Button
+                    sx={{ textTransform: 'none' }}
+                    onClick={() => handleOpenConnectionDetails(instance)}
+                  >
+                    {instance.instancename}
+                  </Button>
+                </TableCell>
                 <TableCell>{instance.type}</TableCell>
                 <TableCell>{instance.systemtype}</TableCell>
-                <TableCell>{instance.ipaddress}</TableCell>
-                <TableCell>{instance.allocated_username || 'N/A'}</TableCell>
-                <TableCell>{instance.allocateduserid || 'N/A'}</TableCell>
                 <TableCell>{instance.cpucorecount}</TableCell>
                 <TableCell>{instance.memory}</TableCell>
                 <TableCell>{instance.storage}</TableCell>
@@ -437,16 +509,102 @@ export default function UserManagePage() {
                 <TableCell align="center">
                   <FiberManualRecordIcon
                     sx={{
-                      color: instance.status ? 'success.main' : 'error.main',
+                      color: runningInstances[instance.instancename] ? 'success.main' : 'error.main',
                       fontSize: '12px'
                     }}
                   />
+                </TableCell>
+                <TableCell align="center">
+                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                    {!runningInstances[instance.instancename] ? (
+                      <Button
+                        variant="contained"
+                        color="success"
+                        size="small"
+                        onClick={() => handleStartInstance(instance.instancename, instance.instanceid)}
+                        disabled={loadingInstances[instance.instancename]}
+                        sx={{ minWidth: '80px' }}
+                      >
+                        {loadingInstances[instance.instancename] ? (
+                          <CircularProgress size={20} color="inherit" />
+                        ) : (
+                          "Start"
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        color="error"
+                        size="small"
+                        onClick={() => handleStopInstance(instance.instancename, instance.instanceid)}
+                        disabled={loadingInstances[instance.instancename]}
+                        sx={{ minWidth: '80px' }}
+                      >
+                        {loadingInstances[instance.instancename] ? (
+                          <CircularProgress size={20} color="inherit" />
+                        ) : (
+                          "Stop"
+                        )}
+                      </Button>
+                    )}
+                  </Box>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Connection Details Dialog */}
+      <Dialog
+        open={connectionDetailsDialog}
+        onClose={handleCloseConnectionDetails}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Connection Details for {selectedConnectionDetails?.instancename}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              <strong>IP Address:</strong> {selectedConnectionDetails?.ipaddress || 'Not available'}
+            </Typography>
+            <Typography variant="subtitle1" gutterBottom>
+              <strong>Username:</strong> {selectedConnectionDetails?.username || 'Not available'}
+            </Typography>
+            <Typography variant="subtitle1" gutterBottom>
+              <strong>Password:</strong> {selectedConnectionDetails?.password || 'Not available'}
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseConnectionDetails}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={4000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ 
+            width: '100%',
+            fontSize: '1rem',
+            '& .MuiAlert-icon': {
+              fontSize: '1.5rem'
+            }
+          }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }
