@@ -555,5 +555,286 @@ router.get('/available-instance-types', authenticateToken, authenticateUser, asy
   }
 });
 
+// Add this new endpoint
+router.get('/count/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await pool.query(
+      'SELECT COUNT(*) as instance_count FROM Instance WHERE AllocatedUserId = $1',
+      [userId]
+    );
+    res.json({ count: parseInt(result.rows[0].instance_count) });
+  } catch (error) {
+    console.error('Error counting instances:', error);
+    res.status(500).json({ message: 'Error counting instances' });
+  }
+});
+
+router.get('/total-cost/:userId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    
+    const result = await pool.query(`
+      WITH InstanceCosts AS (
+        SELECT 
+          i.instanceid,
+          i.instancename,
+          pt.priceperhour,
+          ul.starttime,
+          ul.endtime,
+          CASE 
+            WHEN ul.endtime IS NULL AND i.booted = true THEN
+              EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ul.starttime)) / 3600 * pt.priceperhour
+            WHEN ul.endtime IS NOT NULL THEN
+              EXTRACT(EPOCH FROM (ul.endtime - ul.starttime)) / 3600 * pt.priceperhour
+            ELSE 0
+          END as usage_cost
+        FROM Instance i
+        JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+        JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
+        LEFT JOIN UsageLogs ul ON i.instanceid = ul.instanceid
+        WHERE i.allocateduserid = $1
+      )
+      SELECT 
+        COALESCE(SUM(usage_cost), 0) as total_cost,
+        COUNT(DISTINCT instanceid) as instance_count
+      FROM InstanceCosts
+    `, [userId]);
+    
+    const totalCost = parseFloat(result.rows[0].total_cost || 0).toFixed(2);
+    
+    res.json({ 
+      totalCost,
+      instanceCount: parseInt(result.rows[0].instance_count),
+      success: true 
+    });
+    
+  } catch (error) {
+    console.error('Error calculating total cost:', error);
+    res.status(500).json({ 
+      message: 'Error calculating total cost',
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+router.get('/total-usage/:userId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    
+    const result = await pool.query(`
+      WITH UsageTimes AS (
+        SELECT 
+          i.instanceid,
+          CASE 
+            WHEN ul.endtime IS NULL AND i.booted = true THEN
+              EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ul.starttime)) / 3600
+            WHEN ul.endtime IS NOT NULL THEN
+              EXTRACT(EPOCH FROM (ul.endtime - ul.starttime)) / 3600
+            ELSE 0
+          END as hours_used
+        FROM Instance i
+        LEFT JOIN UsageLogs ul ON i.instanceid = ul.instanceid
+        WHERE i.allocateduserid = $1
+      )
+      SELECT COALESCE(SUM(hours_used), 0) as total_hours
+      FROM UsageTimes
+    `, [userId]);
+    
+    const totalHours = parseFloat(result.rows[0].total_hours || 0).toFixed(1);
+    res.json({ totalHours });
+    
+  } catch (error) {
+    console.error('Error calculating total usage:', error);
+    res.status(500).json({ message: 'Error calculating total usage' });
+  }
+});
+
+router.get('/hourly-costs/:userId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    // Get data for the last 24 hours by default
+    const result = await pool.query(`
+      WITH RECURSIVE hours AS (
+        SELECT date_trunc('hour', NOW() - interval '23 hours') as hour
+        UNION ALL
+        SELECT hour + interval '1 hour'
+        FROM hours
+        WHERE hour < date_trunc('hour', NOW())
+      ),
+      hourly_costs AS (
+        SELECT 
+          date_trunc('hour', ul.starttime) as hour,
+          SUM(
+            CASE 
+              WHEN ul.endtime IS NULL AND i.booted = true THEN
+                EXTRACT(EPOCH FROM (
+                  LEAST(date_trunc('hour', NOW()) + interval '1 hour', NOW()) - 
+                  GREATEST(date_trunc('hour', ul.starttime), ul.starttime)
+                )) / 3600 * pt.priceperhour
+              WHEN ul.endtime IS NOT NULL THEN
+                EXTRACT(EPOCH FROM (
+                  LEAST(date_trunc('hour', NOW()) + interval '1 hour', ul.endtime) - 
+                  GREATEST(date_trunc('hour', ul.starttime), ul.starttime)
+                )) / 3600 * pt.priceperhour
+              ELSE 0
+            END
+          ) as cost
+        FROM Instance i
+        JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+        JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
+        JOIN UsageLogs ul ON i.instanceid = ul.instanceid
+        WHERE i.allocateduserid = $1
+        AND ul.starttime >= NOW() - interval '24 hours'
+        GROUP BY date_trunc('hour', ul.starttime)
+      )
+      SELECT 
+        hours.hour,
+        COALESCE(hourly_costs.cost, 0) as cost
+      FROM hours
+      LEFT JOIN hourly_costs ON hours.hour = hourly_costs.hour
+      ORDER BY hours.hour;
+    `, [userId]);
+    
+    const hourlyData = result.rows.map(row => ({
+      hour: row.hour,
+      cost: parseFloat(row.cost).toFixed(2)
+    }));
+
+    res.json({ hourlyData });
+    
+  } catch (error) {
+    console.error('Error calculating hourly costs:', error);
+    res.status(500).json({ message: 'Error calculating hourly costs' });
+  }
+});
+
+router.get('/cumulative-costs/:userId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    
+    const result = await pool.query(`
+      WITH RECURSIVE hours AS (
+        SELECT date_trunc('hour', NOW() - interval '23 hours') as hour
+        UNION ALL
+        SELECT hour + interval '1 hour'
+        FROM hours
+        WHERE hour < date_trunc('hour', NOW())
+      ),
+      instance_costs AS (
+        SELECT 
+          i.instanceid,
+          i.instancename,
+          date_trunc('hour', ul.starttime) as hour,
+          SUM(
+            CASE 
+              WHEN ul.endtime IS NULL AND i.booted = true THEN
+                EXTRACT(EPOCH FROM (
+                  LEAST(date_trunc('hour', NOW()) + interval '1 hour', NOW()) - 
+                  GREATEST(date_trunc('hour', ul.starttime), ul.starttime)
+                )) / 3600 * pt.priceperhour
+              WHEN ul.endtime IS NOT NULL THEN
+                EXTRACT(EPOCH FROM (
+                  LEAST(date_trunc('hour', NOW()) + interval '1 hour', ul.endtime) - 
+                  GREATEST(date_trunc('hour', ul.starttime), ul.starttime)
+                )) / 3600 * pt.priceperhour
+              ELSE 0
+            END
+          ) as hourly_cost
+        FROM Instance i
+        JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
+        JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
+        JOIN UsageLogs ul ON i.instanceid = ul.instanceid
+        WHERE i.allocateduserid = $1
+        AND ul.starttime >= NOW() - interval '24 hours'
+        GROUP BY i.instanceid, i.instancename, date_trunc('hour', ul.starttime)
+      ),
+      cumulative_costs AS (
+        SELECT 
+          ic.instanceid,
+          ic.instancename,
+          h.hour,
+          SUM(COALESCE(ic2.hourly_cost, 0)) as cumulative_cost
+        FROM hours h
+        CROSS JOIN (SELECT DISTINCT instanceid, instancename FROM instance_costs) ic
+        LEFT JOIN instance_costs ic2 
+          ON ic.instanceid = ic2.instanceid 
+          AND ic2.hour <= h.hour
+        GROUP BY ic.instanceid, ic.instancename, h.hour
+        ORDER BY h.hour, ic.instancename
+      )
+      SELECT 
+        instanceid,
+        instancename,
+        hour,
+        ROUND(cumulative_cost::numeric, 2) as cost
+      FROM cumulative_costs
+      ORDER BY hour, instancename;
+    `, [userId]);
+
+    // Transform the data for the chart
+    const instances = [...new Set(result.rows.map(row => row.instancename))];
+    const hours = [...new Set(result.rows.map(row => row.hour))];
+    
+    const chartData = {
+      hours: hours,
+      datasets: instances.map(instance => ({
+        instanceName: instance,
+        data: result.rows
+          .filter(row => row.instancename === instance)
+          .map(row => ({
+            hour: row.hour,
+            cost: parseFloat(row.cost)
+          }))
+      }))
+    };
+
+    res.json(chartData);
+    
+  } catch (error) {
+    console.error('Error calculating cumulative costs:', error);
+    res.status(500).json({ message: 'Error calculating cumulative costs' });
+  }
+});
+
+router.get('/uptime/:userId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    
+    const result = await pool.query(`
+      SELECT 
+        i.instanceid,
+        i.instancename,
+        ROUND(
+          SUM(
+            EXTRACT(EPOCH FROM (
+              CASE 
+                WHEN ul.endtime IS NULL AND i.booted = true THEN NOW()
+                ELSE COALESCE(ul.endtime, NOW())
+              END - ul.starttime
+            )) / 3600
+          )::numeric, 
+          1
+        ) as total_hours
+      FROM Instance i
+      LEFT JOIN UsageLogs ul ON i.instanceid = ul.instanceid
+      WHERE i.allocateduserid = $1
+      GROUP BY i.instanceid, i.instancename
+      ORDER BY i.instancename;
+    `, [userId]);
+
+    res.json({
+      instances: result.rows.map(row => ({
+        name: row.instancename,
+        hours: parseFloat(row.total_hours)
+      }))
+    });
+    
+  } catch (error) {
+    console.error('Error calculating instance uptime:', error);
+    res.status(500).json({ message: 'Error calculating instance uptime' });
+  }
+});
 
 module.exports = router;
