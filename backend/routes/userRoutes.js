@@ -288,4 +288,148 @@ router.get('/instances/:userId', authenticateToken, async (req, res) => {
   }
 });
 
+
+// Request an instance of a specific type
+router.post('/request-instance', authenticateToken, authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { instancetype } = req.body;  // Now we only need the instance type name
+
+    // Begin transaction
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // First, get the instancetypeid and check if instances are available
+      const typeResult = await client.query(`
+        SELECT 
+          it.instancetypeid,
+          it.free_count,
+          COUNT(i.instanceid) FILTER (WHERE i.allocateduserid IS NULL AND i.booted = false) as available_instances
+        FROM public.instancetype it
+        LEFT JOIN public.instance i ON it.instancetypeid = i.instancetypeid
+        WHERE it.instancetype = $1
+        GROUP BY it.instancetypeid
+      `, [instancetype]);
+
+      if (typeResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ 
+          message: 'Instance type not found' 
+        });
+      }
+
+      const instanceType = typeResult.rows[0];
+      if (instanceType.available_instances === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          message: 'No available instances of this type' 
+        });
+      }
+
+      // Get a random available instance of this type
+      const instanceResult = await client.query(`
+        SELECT instanceid 
+        FROM public.instance 
+        WHERE instancetypeid = $1 
+        AND allocateduserid IS NULL 
+        AND booted = false
+        ORDER BY RANDOM() 
+        LIMIT 1
+      `, [instanceType.instancetypeid]);
+
+      const instanceId = instanceResult.rows[0].instanceid;
+
+      // Allocate the instance to the user
+      await client.query(`
+        UPDATE public.instance 
+        SET allocateduserid = $1 
+        WHERE instanceid = $2
+      `, [userId, instanceId]);
+
+      // Update the free_count
+      await client.query(`
+        UPDATE public.instancetype 
+        SET free_count = free_count - 1 
+        WHERE instancetypeid = $1
+      `, [instanceType.instancetypeid]);
+
+      await client.query('COMMIT');
+
+      // Get the full instance details to return to the user
+      const result = await pool.query(`
+        SELECT 
+          i.instanceid,
+          i.instancename,
+          i.ipaddress,
+          i.booted as status,
+          it.instancetype as type,
+          it.systemtype,
+          it.cpucorecount,
+          it.memory,
+          it.storage,
+          pt.price_tier,
+          pt.priceperhour
+        FROM public.instance i
+        JOIN public.instancetype it ON i.instancetypeid = it.instancetypeid
+        JOIN public.pricetier pt ON it.pricetierId = pt.pricetierId
+        WHERE i.instanceid = $1
+      `, [instanceId]);
+
+      res.json({
+        message: 'Instance allocated successfully',
+        instance: result.rows[0]
+      });
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('Error allocating instance:', error);
+    res.status(500).json({ 
+      message: 'Error allocating instance',
+      error: error.message 
+    });
+  }
+});
+
+// Get available instance types
+router.get('/available-instance-types', authenticateToken, authenticateUser, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        it.instancetype,
+        it.systemtype,
+        it.cpucorecount,
+        it.memory,
+        it.storage,
+        it.free_count,
+        pt.price_tier,
+        pt.priceperhour,
+        COUNT(i.instanceid) FILTER (WHERE i.allocateduserid IS NULL AND i.booted = false) as available_instances
+      FROM public.instancetype it
+      JOIN public.pricetier pt ON it.pricetierId = pt.pricetierId
+      LEFT JOIN public.instance i ON it.instancetypeid = i.instancetypeid
+      WHERE it.instancetype IN (
+        'ArchLinux Micro',
+        'ArchLinux Macro',
+        'ArchLinux Mega',
+        'ArchLinux MegaX'
+      )
+      GROUP BY it.instancetypeid, pt.pricetierId
+      ORDER BY pt.priceperhour ASC
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching available instance types:', error);
+    res.status(500).json({ message: 'Error fetching instance types' });
+  }
+});
+
+
 module.exports = router;

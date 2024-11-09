@@ -507,5 +507,172 @@ router.post('/instances/:instanceName/stop', async (req, res) => {
   }
 });
 
+// Request an instance based on requirements
+router.post('/request-instance', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { 
+      cpucorecount, 
+      memory, 
+      storage,
+      systemtype,
+      maxPricePerHour 
+    } = req.body;
+
+    // First, find matching instance types within price range
+    const matchingTypes = await pool.query(`
+      SELECT 
+        it.instancetypeid,
+        it.instancetype,
+        it.systemtype,
+        it.cpucorecount,
+        it.memory,
+        it.storage,
+        it.free_count,
+        pt.priceperhour
+      FROM public.instancetype it
+      JOIN public.pricetier pt ON it.pricetierId = pt.pricetierId
+      WHERE it.cpucorecount >= $1 
+      AND it.memory >= $2 
+      AND it.storage >= $3
+      AND it.systemtype = $4
+      AND pt.priceperhour <= $5
+      AND it.free_count > 0
+      ORDER BY pt.priceperhour ASC
+    `, [cpucorecount, memory, storage, systemtype, maxPricePerHour]);
+
+    if (matchingTypes.rows.length === 0) {
+      return res.status(404).json({ 
+        message: 'No available instance types match your requirements' 
+      });
+    }
+
+    // Get the first (cheapest) matching type
+    const selectedType = matchingTypes.rows[0];
+
+    // Find an available instance of this type
+    const availableInstance = await pool.query(`
+      SELECT instanceid, instancename
+      FROM public.instance
+      WHERE instancetypeid = $1
+      AND allocateduserid IS NULL
+      AND booted = false
+      LIMIT 1
+    `, [selectedType.instancetypeid]);
+
+    if (availableInstance.rows.length === 0) {
+      return res.status(404).json({ 
+        message: 'No available instances of this type' 
+      });
+    }
+
+    // Begin transaction to ensure atomic updates
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Allocate instance to user
+      const instanceId = availableInstance.rows[0].instanceid;
+      await client.query(`
+        UPDATE public.instance 
+        SET allocateduserid = $1 
+        WHERE instanceid = $2
+      `, [userId, instanceId]);
+
+      // Decrease free_count of instance type
+      await client.query(`
+        UPDATE public.instancetype 
+        SET free_count = free_count - 1 
+        WHERE instancetypeid = $1
+      `, [selectedType.instancetypeid]);
+
+      await client.query('COMMIT');
+
+      // Return allocated instance details
+      const result = await pool.query(`
+        SELECT 
+          i.instanceid,
+          i.instancename,
+          i.ipaddress,
+          i.username,
+          i.password,
+          i.booted,
+          it.instancetype,
+          it.systemtype,
+          it.cpucorecount,
+          it.memory,
+          it.storage,
+          pt.price_tier,
+          pt.priceperhour
+        FROM public.instance i
+        JOIN public.instancetype it ON i.instancetypeid = it.instancetypeid
+        JOIN public.pricetier pt ON it.pricetierId = pt.pricetierId
+        WHERE i.instanceid = $1
+      `, [instanceId]);
+
+      res.json({
+        message: 'Instance allocated successfully',
+        instance: result.rows[0]
+      });
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('Error allocating instance:', error);
+    res.status(500).json({ 
+      message: 'Error allocating instance',
+      error: error.message 
+    });
+  }
+});
+
+// Optional: Add a route to check availability before requesting
+router.get('/check-instance-availability', async (req, res) => {
+  try {
+    const { 
+      cpucorecount, 
+      memory, 
+      storage,
+      systemtype,
+      maxPricePerHour 
+    } = req.query;
+
+    const result = await pool.query(`
+      SELECT 
+        it.instancetype,
+        it.systemtype,
+        it.cpucorecount,
+        it.memory,
+        it.storage,
+        it.free_count,
+        pt.price_tier,
+        pt.priceperhour,
+        COUNT(i.instanceid) FILTER (WHERE i.allocateduserid IS NULL) as available_instances
+      FROM public.instancetype it
+      JOIN public.pricetier pt ON it.pricetierId = pt.pricetierId
+      LEFT JOIN public.instance i ON it.instancetypeid = i.instancetypeid
+      WHERE it.cpucorecount >= $1 
+      AND it.memory >= $2 
+      AND it.storage >= $3
+      AND it.systemtype = $4
+      AND pt.priceperhour <= $5
+      AND it.free_count > 0
+      GROUP BY it.instancetypeid, pt.pricetierId
+      ORDER BY pt.priceperhour ASC
+    `, [cpucorecount, memory, storage, systemtype, maxPricePerHour]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error checking availability:', error);
+    res.status(500).json({ message: 'Error checking instance availability' });
+  }
+});
+
+
 module.exports = router;
 
