@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const { authenticateToken } = require('../authMiddleware');
+const fetch = require('node-fetch'); // Make sure to install and import node-fetch
 
 const router = express.Router();
 
@@ -109,7 +110,7 @@ router.get('/instances', async (req, res) => {
         i.ipaddress,
         i.username,
         i.password,
-        i.booted as status,
+        i.booted,
         i.allocateduserid,
         it.instancetype as type,
         it.systemtype,
@@ -122,6 +123,13 @@ router.get('/instances', async (req, res) => {
       JOIN InstanceType it ON i.instancetypeid = it.instancetypeid
       JOIN PriceTier pt ON it.pricetierId = pt.pricetierId
     `);
+
+    console.log('Fetched instances with booted status:', 
+      result.rows.map(i => ({
+        name: i.instancename,
+        booted: i.booted
+      }))
+    );
 
     res.json(result.rows);
   } catch (error) {
@@ -317,6 +325,185 @@ router.get('/user/:userId/instances', async (req, res) => {
   } catch (error) {
     console.error('Error fetching user instances:', error);
     res.status(500).json({ message: 'Error fetching user instances' });
+  }
+});
+
+// Get current endpoints
+router.get('/control-endpoints', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM ControlEndpoints WHERE id = 1');
+    if (result.rows.length === 0) {
+      res.json({ startEndpoint: '', stopEndpoint: '' });
+    } else {
+      res.json({
+        startEndpoint: result.rows[0].start_endpoint,
+        stopEndpoint: result.rows[0].stop_endpoint
+      });
+    }
+  } catch (error) {
+    console.error('Error fetching endpoints:', error);
+    res.status(500).json({ message: 'Error fetching endpoints' });
+  }
+});
+
+// Update endpoints
+router.post('/control-endpoints', async (req, res) => {
+  try {
+    const { startEndpoint, stopEndpoint } = req.body;
+    
+    if (!startEndpoint || !stopEndpoint) {
+      return res.status(400).json({ message: 'Both endpoints are required' });
+    }
+
+    // Upsert the endpoints
+    const result = await pool.query(`
+      INSERT INTO ControlEndpoints (id, start_endpoint, stop_endpoint)
+      VALUES (1, $1, $2)
+      ON CONFLICT (id) DO UPDATE 
+      SET 
+        start_endpoint = $1, 
+        stop_endpoint = $2,
+        last_updated = CURRENT_TIMESTAMP
+      RETURNING *
+    `, [startEndpoint, stopEndpoint]);
+
+    res.json({ 
+      message: 'Endpoints saved successfully',
+      endpoints: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error saving endpoints:', error);
+    res.status(500).json({ message: 'Error saving endpoints' });
+  }
+});
+
+// Update the start endpoint
+router.post('/instances/:instanceName/start', async (req, res) => {
+  try {
+    const { instanceName } = req.params;
+    
+    // Check if instance is already running
+    const instanceCheck = await pool.query(
+      'SELECT booted FROM Instance WHERE instancename = $1',
+      [instanceName]
+    );
+
+    if (instanceCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
+    }
+
+    if (instanceCheck.rows[0].booted) {
+      return res.status(400).json({ message: 'Instance is already running' });
+    }
+
+    // 1. Get control endpoints from database
+    const endpointsResult = await pool.query(
+      'SELECT start_endpoint FROM ControlEndpoints WHERE id = 1'
+    );
+    
+    if (endpointsResult.rows.length === 0) {
+      return res.status(400).json({ message: 'Control endpoints not configured' });
+    }
+
+    const startEndpoint = endpointsResult.rows[0].start_endpoint;
+
+    // 2. Call the control endpoint
+    const controlResponse = await fetch(startEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ vm_name: instanceName })
+    });
+
+    if (!controlResponse.ok) {
+      throw new Error('Failed to start instance through control endpoint');
+    }
+
+    // 3. Update instance status in database
+    const result = await pool.query(`
+      UPDATE Instance 
+      SET booted = true 
+      WHERE instancename = $1 
+      RETURNING *
+    `, [instanceName]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error starting instance:', error);
+    res.status(500).json({ 
+      message: error.message || 'Error starting instance'
+    });
+  }
+});
+
+router.post('/instances/:instanceName/stop', async (req, res) => {
+  try {
+    const { instanceName } = req.params;
+    
+    // Check if instance is already stopped
+    const instanceCheck = await pool.query(
+      'SELECT booted FROM Instance WHERE instancename = $1',
+      [instanceName]
+    );
+
+    if (instanceCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
+    }
+
+    if (!instanceCheck.rows[0].booted) {
+      return res.status(400).json({ message: 'Instance is already stopped' });
+    }
+
+    // 1. Get control endpoints from database
+    const endpointsResult = await pool.query(
+      'SELECT stop_endpoint FROM ControlEndpoints WHERE id = 1'
+    );
+    
+    if (endpointsResult.rows.length === 0) {
+      return res.status(400).json({ message: 'Control endpoints not configured' });
+    }
+
+    const stopEndpoint = endpointsResult.rows[0].stop_endpoint;
+
+    // 2. Call the control endpoint
+    const controlResponse = await fetch(stopEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ vm_name: instanceName })
+    });
+
+    if (!controlResponse.ok) {
+      throw new Error('Failed to stop instance through control endpoint');
+    }
+
+    // 3. Update instance status in database to false (stopped)
+    const result = await pool.query(`
+      UPDATE Instance 
+      SET booted = false 
+      WHERE instancename = $1 
+      RETURNING *
+    `, [instanceName]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Instance not found' });
+    }
+
+    // Log the update for debugging
+    console.log('Instance status updated:', result.rows[0]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error stopping instance:', error);
+    res.status(500).json({ 
+      message: error.message || 'Error stopping instance'
+    });
   }
 });
 
