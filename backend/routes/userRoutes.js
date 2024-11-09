@@ -115,6 +115,10 @@ router.use(authenticateToken);
 
 router.get('/instances', async (req, res) => {
   try {
+    // Get the authenticated user's ID
+    const userId = req.user.userId;
+    console.log('Filtering instances for user ID:', userId);
+
     const result = await pool.query(`
       SELECT 
         i.InstanceId as instanceid,
@@ -135,7 +139,56 @@ router.get('/instances', async (req, res) => {
       LEFT JOIN InstanceType it ON i.InstanceTypeId = it.InstanceTypeId
       LEFT JOIN PriceTier pt ON it.PriceTierId = pt.PriceTierId
       LEFT JOIN Users u ON i.AllocatedUserId = u.UserId
-    `);
+      WHERE i.AllocatedUserId = $1  -- Filter by the authenticated user's ID
+    `, [userId]);
+
+    // Log the query results for debugging
+    console.log('User ID:', userId);
+    console.log('Number of instances found:', result.rows.length);
+    console.log('Query results:', result.rows);
+
+    const transformedRows = result.rows.map(row => ({
+      ...row,
+      status: Boolean(row.status),
+      cpucorecount: Number(row.cpucorecount),
+      storage: Number(row.storage),
+      memory: Number(row.memory),
+      priceperhour: Number(row.priceperhour)
+    }));
+
+    res.json(transformedRows);
+  } catch (error) {
+    console.error('Error details:', error);
+    res.status(500).json({ message: 'Error fetching instances' });
+  }
+});
+
+router.get('/:userId/instances', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    console.log('Fetching instances for userId:', userId);
+    const result = await pool.query(`
+      SELECT 
+        i.InstanceId as instanceid,
+        i.InstanceName as instancename,
+        i.IPAddress as ipaddress,
+        i.Booted as status,
+        i.Username as username,
+        i.AllocatedUserId as allocateduserid,
+        u.Username as allocated_username,
+        it.InstanceType as type,
+        it.SystemType as systemtype,
+        it.CPUCoreCount as cpucorecount,
+        it.Storage as storage,
+        it.Memory as memory,
+        pt.price_tier,
+        pt.PricePerHour as priceperhour
+      FROM Instance i
+      LEFT JOIN InstanceType it ON i.InstanceTypeId = it.InstanceTypeId
+      LEFT JOIN PriceTier pt ON it.PriceTierId = pt.PriceTierId
+      LEFT JOIN Users u ON i.AllocatedUserId = u.UserId
+      WHERE i.AllocatedUserId = $1
+    `, [userId]);
 
     // Transform the data to ensure proper casing and format
     const transformedRows = result.rows.map(row => ({
@@ -494,15 +547,39 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
+    const userId = req.user.id;
+    const { instancetype } = req.body;
+    
+    console.log('Request received:', {
+      userId,
+      instancetype,
+      userObject: req.user
+    });
 
     // Step 1: Check instance type and availability
     const instanceType = await checkInstanceTypeAvailability(client, instancetype);
     console.log('Available instances:', instanceType.available_instances);
 
-    // Step 2: Find an available instance
-    const selectedInstance = await findAvailableInstance(client, instanceType.instancetypeid);
-    console.log('Selected instance:', selectedInstance.instanceid);
+      const typeResult = await client.query(`
+        SELECT 
+          it.instancetypeid,
+          it.instancetype,
+          COUNT(i.instanceid) FILTER (WHERE i.allocateduserid IS NULL AND i.booted = false) as available_count
+        FROM public.instancetype it
+        LEFT JOIN public.instance i ON it.instancetypeid = it.instancetypeid
+        WHERE it.instancetype = $1
+        GROUP BY it.instancetypeid
+        FOR UPDATE
+      `, [instancetype]);
+
+      console.log('Type result:', typeResult.rows);
+
+      if (typeResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ 
+          message: 'Instance type not found' 
+        });
+      }
 
     // Step 3: Allocate instance to user
     await allocateInstanceToUser(client, userId, selectedInstance.instanceid);
@@ -510,16 +587,125 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
     // Step 4: Update free count
     await updateFreeCount(client, instanceType.instancetypeid);
 
-    // Step 5: Get full instance details
-    const instanceDetails = await getInstanceDetails(client, selectedInstance.instanceid);
 
-    await client.query('COMMIT');
+      // const instanceResult = await client.query(`
+      //   SELECT instanceid, instancename 
+      //   FROM public.instance 
+      //   WHERE instancetypeid = $1 
+      //   AND allocateduserid IS NULL 
+      //   AND booted = false
+      //   ORDER BY RANDOM() 
+      //   LIMIT 1
+      // `, [instanceType.instancetypeid]);
+      const instanceResult = await client.query(`
+        SELECT instanceid, instancename
+        FROM public.instance 
+        WHERE instancetypeid = $1 
+          AND allocateduserid IS NULL 
+          AND booted = false
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      `, [instanceType.instancetypeid]);
 
-    res.json({
-      message: 'Instance allocated successfully',
-      instance: instanceDetails
-    });
+      console.log('Selected instance:', instanceResult.rows);
 
+      const instanceId = instanceResult.rows[0].instanceid;
+
+      // const updateResult = await client.query(`
+      //   UPDATE public.instance 
+      //   SET allocateduserid = $1 
+      //   WHERE instanceid = $2
+      //   RETURNING *
+      // `, [userId, instanceId]);
+      const updateResult = await client.query(`
+        WITH selected_instance AS (
+          SELECT instanceid 
+          FROM public.instance
+          WHERE instancetypeid = $1 
+            AND allocateduserid IS NULL 
+            AND booted = false
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE public.instance i
+        SET 
+          allocateduserid = $2,
+          booted = false
+        FROM selected_instance si
+        WHERE i.instanceid = si.instanceid
+        RETURNING 
+          i.instanceid,
+          i.instancename,
+          i.ipaddress,
+          i.username,
+          i.password,
+          i.booted
+      `, [instanceTypeId, userId]);
+
+      console.log('Update result:', updateResult.rows);
+
+      // Update the free_count
+      // const freeCountUpdate = await client.query(`
+      //   UPDATE public.instancetype 
+      //   SET 
+      //     free_count = free_count - 1,
+      //     available_instances = available_instances - 1
+      //   WHERE instancetypeid = $1 
+      //     AND free_count > 0
+      //     AND available_instances > 0
+      //   RETURNING free_count, available_instances
+      // `, [instanceType.instancetypeid]);
+
+      // console.log('Free count update:', freeCountUpdate.rows);
+
+      await client.query(`
+        UPDATE public.instancetype 
+        SET free_count = (
+          SELECT COUNT(*) 
+          FROM public.instance 
+          WHERE instancetypeid = $1 
+            AND allocateduserid IS NULL 
+            AND booted = false
+        )
+        WHERE instancetypeid = $1
+      `, [instanceTypeId]);
+
+      await client.query('COMMIT');
+
+      // Get the full instance details
+      const result = await pool.query(`
+        SELECT 
+          i.instanceid,
+          i.instancename,
+          i.ipaddress,
+          i.booted as status,
+          it.instancetype as type,
+          it.systemtype,
+          it.cpucorecount,
+          it.memory,
+          it.storage,
+          pt.price_tier,
+          pt.priceperhour
+        FROM public.instance i
+        JOIN public.instancetype it ON i.instancetypeid = it.instancetypeid
+        JOIN public.pricetier pt ON it.pricetierId = pt.pricetierId
+        WHERE i.instanceid = $1
+      `, [instanceId]);
+
+      console.log('Final result:', result.rows);
+
+      res.json({
+        message: 'Instance allocated successfully',
+        instance: result.rows[0]
+      });
+
+    } catch (err) {
+      console.error('Transaction error:', err);
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Transaction error:', error);
