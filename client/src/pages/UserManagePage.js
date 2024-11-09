@@ -120,7 +120,7 @@ export default function UserManagePage() {
 
   const fetchAvailableTypes = async () => {
     try {
-      const data = await fetchData('/api/available-instance-types');
+      const data = await fetchData('/api/user/available-instance-types');
       console.log('Available types:', data);
       setAvailableTypes(data);
     } catch (error) {
@@ -148,16 +148,19 @@ export default function UserManagePage() {
     event.preventDefault();
     setLoading(true);
     try {
-      const response = await fetch(`${config.server_host}/api/request-instance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          instancetype: requestForm.instancetype
-        })
-      });
+      const response = await fetch(
+        `http://${config.server_host}:${config.server_port}/api/user/request-instance`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          },
+          body: JSON.stringify({
+            instancetype: requestForm.instancetype
+          })
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -170,6 +173,11 @@ export default function UserManagePage() {
       fetchInstances(); 
     } catch (error) {
       console.error('Error requesting instance:', error);
+      setSnackbar({
+        open: true,
+        message: '❌ Failed to request instance: ' + error.message,
+        severity: 'error'
+      });
     } finally {
       setLoading(false);
     }
