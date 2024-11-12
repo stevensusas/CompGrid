@@ -699,13 +699,6 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         instance: result.rows[0]
       });
 
-    } catch (err) {
-      console.error('Transaction error:', err);
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Transaction error:', error);
@@ -720,7 +713,6 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
       message: errorMessage,
       error: error.message 
     });
-
   } finally {
     client.release();
   }
