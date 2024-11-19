@@ -14,7 +14,7 @@ Password: 123456
 ## Motivation
 
 ## Engineering Specs
-
+<img width="1121" alt="image" src="https://github.com/user-attachments/assets/873228b0-8d85-443d-91a4-855165d8c2a3">
 ### Cluster Simulation
 
 ### Backend
