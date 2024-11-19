@@ -1,31 +1,48 @@
 # CompGrid
 
-General steps to configured boosted VMs for ssh connection:
+## Usage
+http://k8s-default-frontend-9a8b339ea2-3f40a0d41ad2dad1.elb.us-east-1.amazonaws.com/
 
-1. Login
-2. Install and startup openssh
-3. create new user and password
-4. check local ip address
-5. in remote machine, do ```ssh [user]@[ip address]```
+#### Owner Login:
+Username: steven
+Password: steven
 
-Debian:
+#### User Login:
+Username: wendy
+Password: 123456
 
-Log in with username ```debian``` and password ```debian```
+## Motivation
 
-```
-sudo adduser --gecos "Full Name,RoomNumber,WorkPhone,HomePhone" --disabled-password newusername && echo "newusername:newpassword" | sudo chpasswd
-sudo apt install openssh-server
-sudo systemctl start ssh
-ip -4 a show enp0s1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
-```
+## Engineering Specs
 
-ArchLinux:
+### Cluster Simulation
 
-Log in with username ```root``` and password ```root```
+### Backend
 
-```
-useradd -m -s /bin/bash newusername && echo "newusername:password" | chpasswd
-pacman -Syu --noconfirm
-systemctl start sshd
-ip -4 a show enp0s1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
-```
+#### User Authentication
+
+### Frontend
+
+#### Nginx Deployment
+
+### Data Storage
+
+#### Database
+
+#### Redis
+
+### DevOps
+
+#### Docker Compose
+
+#### Cloud Services
+
+#### Kubernetes
+
+#### Load Balancers
+
+#### Autoscaling
+
+#### Infrastructure as Code
+
+
