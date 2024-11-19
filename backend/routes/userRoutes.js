@@ -464,35 +464,26 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
 
     await client.query('BEGIN');
 
-    // Modified query to fix the column reference
+    // First, find an available instance of the requested type
     const instanceTypeResult = await client.query(`
-      WITH selected_instance AS (
-        SELECT i.instanceid, i.instancetypeid
-        FROM public.instance i
-        JOIN public.instancetype it ON i.instancetypeid = it.instancetypeid
-        WHERE it.instancetype = $1 
-          AND i.allocateduserid IS NULL
-          AND i.booted = false
-        LIMIT 1
-        FOR UPDATE SKIP LOCKED
-      )
-      SELECT 
-        si.instanceid,
-        it.instancetypeid
+      SELECT i.instanceid, it.instancetypeid
       FROM public.instancetype it
-      LEFT JOIN selected_instance si ON it.instancetypeid = si.instancetypeid
-      WHERE it.instancetype = $1
+      JOIN public.instance i ON it.instancetypeid = i.instancetypeid
+      WHERE it.instancetype = $1 
+        AND i.allocateduserid IS NULL
+        AND i.booted = false
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
     `, [instancetype]);
 
-    const instanceType = instanceTypeResult.rows[0];
-    if (!instanceType) {
+    if (instanceTypeResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ message: 'Instance type not found or no instances available' });
+      return res.status(404).json({ message: 'No available instances of this type' });
     }
 
-    const { instanceid, instancetypeid } = instanceType;
+    const { instanceid, instancetypeid } = instanceTypeResult.rows[0];
 
-    // Rest of the code remains the same
+    // Allocate the instance to the user
     const allocationResult = await client.query(`
       UPDATE public.instance i
       SET allocateduserid = $1
@@ -504,21 +495,21 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         i.username,
         i.password,
         i.booted as status,
-        it.instancetype as type,
-        it.systemtype,
-        it.cpucorecount,
-        it.memory,
-        it.storage,
-        pt.priceperhour
-      FROM public.instancetype it
-      JOIN public.pricetier pt ON it.pricetierId = pt.pricetierId
-      WHERE i.instancetypeid = it.instancetypeid
+        (SELECT instancetype FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as type,
+        (SELECT systemtype FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as systemtype,
+        (SELECT cpucorecount FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as cpucorecount,
+        (SELECT memory FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as memory,
+        (SELECT storage FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as storage,
+        (SELECT priceperhour FROM public.pricetier pt 
+         JOIN public.instancetype it ON pt.pricetierId = it.pricetierId 
+         WHERE it.instancetypeid = i.instancetypeid) as priceperhour
     `, [userId, instanceid]);
 
     if (allocationResult.rowCount === 0) {
       throw new Error('Failed to allocate instance');
     }
 
+    // Update the free count
     await client.query(`
       UPDATE public.instancetype
       SET free_count = free_count - 1
