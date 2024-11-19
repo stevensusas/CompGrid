@@ -494,10 +494,25 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
 
     // Rest of the code remains the same
     const allocationResult = await client.query(`
-      UPDATE public.instance
+      UPDATE public.instance i
       SET allocateduserid = $1
       WHERE instanceid = $2
-      RETURNING instanceid, instancename, ipaddress, username, password, booted
+      RETURNING 
+        i.instanceid,
+        i.instancename,
+        i.ipaddress,
+        i.username,
+        i.password,
+        i.booted as status,
+        it.instancetype as type,
+        it.systemtype,
+        it.cpucorecount,
+        it.memory,
+        it.storage,
+        pt.priceperhour
+      FROM public.instancetype it
+      JOIN public.pricetier pt ON it.pricetierId = pt.pricetierId
+      WHERE i.instancetypeid = it.instancetypeid
     `, [userId, instanceid]);
 
     if (allocationResult.rowCount === 0) {
