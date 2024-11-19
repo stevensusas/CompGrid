@@ -464,10 +464,10 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
 
     await client.query('BEGIN');
 
-    // Step 1: Check instance type and availability in one go
+    // Modified query to fix the column reference
     const instanceTypeResult = await client.query(`
       WITH selected_instance AS (
-        SELECT i.instanceid, i.instancename
+        SELECT i.instanceid, i.instancetypeid
         FROM public.instance i
         JOIN public.instancetype it ON i.instancetypeid = it.instancetypeid
         WHERE it.instancetype = $1 
@@ -476,7 +476,9 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      SELECT si.instanceid, it.instancetypeid
+      SELECT 
+        si.instanceid,
+        it.instancetypeid
       FROM public.instancetype it
       LEFT JOIN selected_instance si ON it.instancetypeid = si.instancetypeid
       WHERE it.instancetype = $1
@@ -490,7 +492,7 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
 
     const { instanceid, instancetypeid } = instanceType;
 
-    // Step 2: Allocate instance to the user
+    // Rest of the code remains the same
     const allocationResult = await client.query(`
       UPDATE public.instance
       SET allocateduserid = $1
@@ -502,7 +504,6 @@ router.post('/request-instance', authenticateToken, authenticateUser, async (req
       throw new Error('Failed to allocate instance');
     }
 
-    // Step 3: Update free count
     await client.query(`
       UPDATE public.instancetype
       SET free_count = free_count - 1
