@@ -284,10 +284,6 @@ export default function UserManagePage() {
   );
 
   useEffect(() => {
-    fetchInstances();
-  }, [fetchInstances]);
-
-  useEffect(() => {
     if (openRequestModal) {
       fetchAvailableTypes();
     }
@@ -296,7 +292,7 @@ export default function UserManagePage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        if (!user) {
+        if (!user || !user.userId) {
           console.log('No user found');
           return;
         }
@@ -304,10 +300,16 @@ export default function UserManagePage() {
         console.log('Current user:', user);
         console.log('User ID:', user.userId);
         
-        // Filter instances for the current user
-        const instancesData = await fetchData('/api/user/instances');
+        // Use the user-specific endpoint
+        const instancesData = await fetchData(`/api/user/instances/${user.userId}`);
         console.log('Fetched instances:', instancesData);
-        setInstances(instancesData);
+        
+        // Filter instances for the current user (belt and suspenders)
+        const userInstances = instancesData.filter(instance => 
+          instance.allocateduserid === user.userId
+        );
+        
+        setInstances(userInstances);
 
       } catch (error) {
         console.error('Error loading data:', error);
