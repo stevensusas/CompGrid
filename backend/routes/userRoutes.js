@@ -456,18 +456,78 @@ router.get('/instances/:userId', authenticateToken, async (req, res) => {
 });
 
 // Main endpoint handler
-router.post('/request-instance', async (req, res) => {
+router.post('/request-instance', authenticateToken, authenticateUser, async (req, res) => {
+  const client = await pool.connect();
+  
   try {
-    const userId = req.user.userId; // Changed from req.user.id
-    const { 
-      cpucorecount, 
-      memory, 
-      storage,
-      systemtype,
-      maxPricePerHour 
-    } = req.body;
-    
-    // Rest of the implementation...
+    const userId = req.user.userId;
+    const { instancetype } = req.body;
+
+    console.log('Request received:', { userId, instancetype });
+
+    await client.query('BEGIN');
+
+    // Find an available instance of the requested type
+    const instanceCheck = await client.query(`
+      SELECT i.instanceid, it.instancetypeid
+      FROM public.instancetype it
+      JOIN public.instance i ON it.instancetypeid = i.instancetypeid
+      WHERE it.instancetype = $1 
+        AND i.allocateduserid IS NULL
+        AND i.booted = false
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    `, [instancetype]);
+
+    if (instanceCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'No available instances of this type' });
+    }
+
+    const { instanceid, instancetypeid } = instanceCheck.rows[0];
+
+    // Allocate the instance to the user
+    const allocationResult = await client.query(`
+      UPDATE public.instance i
+      SET allocateduserid = $1
+      WHERE instanceid = $2
+      RETURNING 
+        i.instanceid,
+        i.instancename,
+        i.ipaddress,
+        i.username,
+        i.password,
+        i.booted as status,
+        (SELECT instancetype FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as type,
+        (SELECT systemtype FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as systemtype,
+        (SELECT cpucorecount FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as cpucorecount,
+        (SELECT memory FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as memory,
+        (SELECT storage FROM public.instancetype WHERE instancetypeid = i.instancetypeid) as storage,
+        (SELECT pt.priceperhour FROM public.pricetier pt 
+         JOIN public.instancetype it ON pt.pricetierId = it.pricetierId 
+         WHERE it.instancetypeid = i.instancetypeid) as priceperhour
+    `, [userId, instanceid]);
+
+    if (allocationResult.rowCount === 0) {
+      throw new Error('Failed to allocate instance');
+    }
+
+    // Update the free count
+    await client.query(`
+      UPDATE public.instancetype
+      SET free_count = free_count - 1
+      WHERE instancetypeid = $1
+    `, [instancetypeid]);
+
+    await client.query('COMMIT');
+
+    console.log('Instance allocated:', allocationResult.rows[0]);
+
+    res.json({
+      message: 'Instance allocated successfully',
+      instance: allocationResult.rows[0]
+    });
+
   } catch (err) {
     console.error('Transaction error:', err);
     await client.query('ROLLBACK');
