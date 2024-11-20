@@ -35,7 +35,7 @@ Our backend is built with **NodeJS** and **ExpressJS**. Additionally, we used JW
 
 ### Data Storage
 
-I used **PostgreSQL** hosted on **AWS RDS** for persistent, relational data storage. I also used **Redis** for data caching, specifically for enabling the feature of robustly storing users' instance usage logs.
+I used **PostgreSQL** hosted on **AWS RDS** for persistent, relational data storage. I also used **Redis** for data caching, specifically for enabling the feature of robustly storing users' instance usage logs and other user session data.
 
 ### DevOps
 
