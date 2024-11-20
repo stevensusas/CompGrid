@@ -41,14 +41,24 @@ I used **PostgreSQL** hosted on **AWS RDS** for persistent, relational data stor
 
 #### Docker Compose
 
+To optimize the developmental build process of the entire web application, I created containers for the frontend application, backend application and the redis instance with proper port exposure. Then, I used docker compose to orchestrate the containers so that I can spin up the entire application for developmental testing in one line of commandline.
+
 #### Cloud Services
 
-#### Kubernetes
+In the deployment of this project I extensively used cloud services, mainly AWS. I used **AWS ECR** to store the containerized frontend and backend application. I used **AWS EKS** to host a cloud Kubernetes cluster of vertically scalable EC2 instances with add-on services including network load balancing and auto-scaling. I also used **AWS Load Balancer** to implement load balancing services in the EKS cluster. Finally, the application's database is hosted on **AWS RDS**.
 
-#### Load Balancers
+#### Kubernetes, Load Balancing, and Auto-scaling
 
-#### Autoscaling
+Kubernetes provide my project with horizontal scalability. I used manifests to define the k8s deployments from frontend and backend images stored in ECR, and the k8s services -- the internet-facing network load balancers that provides my frontend and backend with stable DNS. I also set up auto-scaling with the replicas, such that high demands on the backend/frontend servers can trigger spinning up of new pods within the service and handle the surge in requests.
+
+I also used ConfigMaps and SecretManager to manage the environmental variables in my k8s cluster.
 
 #### Infrastructure as Code
+
+I used **Terraform** to manage the complex cloud infrastructure involved in this project, namely AWS RDS, AWS EKS, AWS ECR, and AWS Load Balancer.
+
+#### CI/CD
+
+I used **Github Actions** to automate the deployment pipeline after changes have be pushed to main. Specifically, the CI/CD pipeline rebuild the frontend and backend containers, push them to AWS ECR, and rollout & restart the frontend and backend deployments automatically upon changes in the codebase.
 
 
