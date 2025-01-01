@@ -3,6 +3,10 @@
 ## Usage
 http://k8s-default-frontend-9a8b339ea2-3f40a0d41ad2dad1.elb.us-east-1.amazonaws.com/
 
+## Demo
+
+https://github.com/user-attachments/assets/63465314-676c-46d7-a040-db5b611b66dc
+
 #### Owner Login:
 Username: steven
 Password: steven
